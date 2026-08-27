@@ -1,4 +1,5 @@
 {
+    "privileges": [],
     "dataRoles": [{
             "displayName": "Category",
             "name": "category",
@@ -57,6 +58,17 @@
         }
     }],
     "objects": {
+        "general": {
+            "properties": {
+                "formatString": {
+                    "type": {
+                        "formatting": {
+                            "formatString": true
+                        }
+                    }
+                }
+            }
+        },
         "chartOrientation": {
             "displayName": "Chart Options",
             "properties": {

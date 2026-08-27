@@ -10,6 +10,11 @@
         "skipLibCheck": true,
         "noImplicitReturns": true,
         "noFallthroughCasesInSwitch": true,
+        "noImplicitThis": true,
+        "strictFunctionTypes": true,
+        "strictBindCallApply": true,
+        "alwaysStrict": true,
+        "useUnknownInCatchVariables": true,
         "lib": [
             "es2022",
             "dom"

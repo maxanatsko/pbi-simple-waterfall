@@ -23,6 +23,7 @@
         "start": "pbiviz start --all-locales",
         "package": "node scripts/package.mjs",
         "lint": "eslint src test",
+        "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.test.json",
         "test": "vitest run",
         "npmVersion": "npm list --depth=0"
     },

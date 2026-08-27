@@ -36,6 +36,9 @@ import DataView = powerbi.DataView;
 import { ITooltipServiceWrapper, createTooltipServiceWrapper } from "powerbi-visuals-utils-tooltiputils";
 import ISelectionIdBuilder = powerbi.visuals.ISelectionIdBuilder;
 import ISelectionId = powerbi.visuals.ISelectionId;
+// The selection-manager APIs traffic in the narrower `extensibility.ISelectionId`;
+// only the visuals variant carries `.includes()` / `.equals()` etc.
+import ISelectionIdBase = powerbi.extensibility.ISelectionId;
 import ISelectionManager = powerbi.extensibility.ISelectionManager;
 import DataViewHierarchyLevel = powerbi.DataViewHierarchyLevel;
 import DataViewMatrixNode = powerbi.DataViewMatrixNode;
@@ -53,6 +56,11 @@ import { VisualSettings, VisualFormattingSettingsModel } from "./settings";
 import { FormattingSettingsService } from "powerbi-visuals-utils-formattingmodel";
 import { dataRoleHelper } from "powerbi-visuals-utils-dataviewutils";
 import { AxisScale, AxisDomain } from "d3";
+
+/** Best-effort message extraction from an unknown thrown value. */
+function toErrorMessage(e: unknown): string {
+    return e instanceof Error ? e.message : String(e);
+}
 
 interface BarChartDataPoint {
     value: PrimitiveValue;
@@ -229,8 +237,8 @@ export class Visual implements IVisual {
         //-------------------------------------------------------------------------
         this.events.renderingFinished(options);
         //-------------------------------------------------------------------------
-        } catch (e) {
-            this.events.renderingFailed(options, e && e.message ? e.message : String(e));
+        } catch (e: unknown) {
+            this.events.renderingFailed(options, toErrorMessage(e));
         }
     }
     private addLegend(options: VisualUpdateOptions) {
@@ -418,7 +426,7 @@ export class Visual implements IVisual {
                 var dragScrollBarXStartposition = 0;
                 var scrollbarwidth = this.width * this.width / this.innerWidth;
 
-                var scrollbar = scrollBarGroup.append('rect')
+                var scrollbar: d3.Selection<any, any, any, any> = scrollBarGroup.append('rect')
                     .attr('width', scrollbarwidth)
                     .attr('height', this.scrollbarBreath)
                     .attr('x', 0)
@@ -901,7 +909,7 @@ export class Visual implements IVisual {
                     .clear()
                     .then(() => {
                         this.selectionManager.registerOnSelectCallback(
-                            (ids: ISelectionId[]) => {
+                            (ids: ISelectionIdBase[]) => {
                                 this.syncSelectionState(this.bars, ids);
                             });
                     });
@@ -925,7 +933,7 @@ export class Visual implements IVisual {
                     }
                     this.selectionManager
                         .select(d.selectionId, isCtrlPressed)
-                        .then((ids: ISelectionId[]) => {
+                        .then((ids: ISelectionIdBase[]) => {
                             this.syncSelectionState(this.bars, ids);
                         });
                     event.stopPropagation();
@@ -982,7 +990,7 @@ export class Visual implements IVisual {
                         }
                         self.selectionManager
                             .select(d.selectionId, event.ctrlKey || event.metaKey || event.shiftKey)
-                            .then((ids: ISelectionId[]) => self.syncSelectionState(self.bars, ids));
+                            .then((ids: ISelectionIdBase[]) => self.syncSelectionState(self.bars, ids));
                         break;
                     case 'ArrowRight':
                     case 'ArrowDown':
@@ -1012,7 +1020,7 @@ export class Visual implements IVisual {
                 }
             });
     }
-    private syncSelectionState = (bars, selectionIds: ISelectionId[]) => {
+    private syncSelectionState = (bars, selectionIds: ISelectionIdBase[]) => {
         if (!bars) {
             return;
         }
@@ -1036,13 +1044,13 @@ export class Visual implements IVisual {
             }
         });
     }
-    private isSelectionIdInArray(selectionIds: ISelectionId[], selectionId: ISelectionId): boolean {
+    private isSelectionIdInArray(selectionIds: ISelectionIdBase[], selectionId: ISelectionIdBase): boolean {
 
         if (!selectionIds || !selectionId) {
             return false;
         }
-        return selectionIds.some((currentSelectionId: ISelectionId) => {
-            return currentSelectionId.includes(selectionId);
+        return selectionIds.some((currentSelectionId) => {
+            return (currentSelectionId as ISelectionId).includes(selectionId as ISelectionId);
         });
     };
     private lineWidth(d, i) {
@@ -1094,7 +1102,7 @@ export class Visual implements IVisual {
     }
     private labelAlignment(tspan, width) {
 
-        tspan.each(function () {
+        tspan.each(function (this: SVGTextContentElement) {
             var tspan = d3.select(this);
             var tspanWidth = tspan.node().getComputedTextLength();
             var diff = (width - tspanWidth) / 2;
@@ -2056,7 +2064,7 @@ export class Visual implements IVisual {
                     }
                     this.selectionManager
                         .select(d.selectionId, isCtrlPressed)
-                        .then((ids: ISelectionId[]) => {
+                        .then((ids: ISelectionIdBase[]) => {
                             this.syncSelectionState(this.bars, ids);
                         });
                     event.stopPropagation();
@@ -2242,7 +2250,7 @@ export class Visual implements IVisual {
     private labelNoWrapText(text, standardwidth) {
 
         var width;
-        text.each(function () {
+        text.each(function (this: SVGTextContentElement) {
             var text = d3.select(this),
 
                 word,
@@ -2287,7 +2295,7 @@ export class Visual implements IVisual {
     }
     private labelWrapText(text, standardwidth) {
         var width;
-        text.each(function () {
+        text.each(function (this: SVGTextContentElement) {
             var text = d3.select(this),
                 words = text.text().split(/\s+/).reverse(),
                 word,
@@ -2468,7 +2476,7 @@ export class Visual implements IVisual {
                     .clear()
                     .then(() => {
                         this.selectionManager.registerOnSelectCallback(
-                            (ids: ISelectionId[]) => {
+                            (ids: ISelectionIdBase[]) => {
                                 this.syncSelectionState(this.bars, ids);
                             });
                     });
@@ -2492,7 +2500,7 @@ export class Visual implements IVisual {
                     }
                     this.selectionManager
                         .select(d.selectionId, isCtrlPressed)
-                        .then((ids: ISelectionId[]) => {
+                        .then((ids: ISelectionIdBase[]) => {
                             this.syncSelectionState(this.bars, ids);
                         });
                     event.stopPropagation();
@@ -2729,7 +2737,7 @@ export class Visual implements IVisual {
     }
     private labelAlignmentHorizontal(tspan, width) {
         return;
-        tspan.each(function () {
+        tspan.each(function (this: SVGTextContentElement) {
             var tspan = d3.select(this);
             var tspanWidth = tspan.node().getComputedTextLength();
             var diff = (width - tspanWidth) / 2;
@@ -2773,7 +2781,7 @@ export class Visual implements IVisual {
             var scrollbarHeight = (scrollBarGroupHeight) * (scrollBarGroupHeight) / this.innerHeight;
 
 
-            var scrollbar = scrollBarGroup.append('rect')
+            var scrollbar: d3.Selection<any, any, any, any> = scrollBarGroup.append('rect')
                 .attr('width', this.scrollbarBreath)
                 .attr('height', scrollbarHeight)
                 .attr('x', this.width - this.scrollbarBreath - this.margin.left)
@@ -2941,7 +2949,7 @@ export class Visual implements IVisual {
                     }
                     this.selectionManager
                         .select(d.selectionId, isCtrlPressed)
-                        .then((ids: ISelectionId[]) => {
+                        .then((ids: ISelectionIdBase[]) => {
                             this.syncSelectionState(this.bars, ids);
                         });
                     event.stopPropagation();
@@ -2984,7 +2992,7 @@ export class Visual implements IVisual {
         });
 
         var maxtextWidth = 0;
-        myxAxisParent.selectAll("text").each(function () {
+        myxAxisParent.selectAll("text").each(function (this: SVGTextContentElement) {
             var text = d3.select(this);
             var textWidth = text.node().getBoundingClientRect().width;
             if (textWidth > maxtextWidth) {
@@ -3039,7 +3047,7 @@ export class Visual implements IVisual {
     }
     private xAxislabelAlignmentHorizontal(tspan, width) {
 
-        tspan.each(function () {
+        tspan.each(function (this: SVGTextContentElement) {
             var tspan = d3.select(this);
             var tspanWidth = tspan.node().getComputedTextLength();
             var diff = (tspanWidth - width) / 2;
@@ -3176,7 +3184,7 @@ export class Visual implements IVisual {
         var maxHeight = standardwidth * text.datum()["childrenCount"];
         var tspanAllowed = Math.floor(maxHeight / textHeight);
 
-        text.each(function () {
+        text.each(function (this: SVGTextContentElement) {
             var text = d3.select(this),
                 words = text.text().split(/\s+/).reverse(),
                 wordsPerLine = Math.ceil(words.length / tspanAllowed),

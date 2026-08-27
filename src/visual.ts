@@ -128,6 +128,10 @@ export class Visual implements IVisual {
     private yAxisHeightHorizontal = 0;
     private scrollbarBreath = 0;
     private yScaleTickValues: number[] = [];
+    private yScale!: d3.ScaleLinear<number, number>;
+    private yScaleReverse!: d3.ScaleLinear<number, number>;
+    private xScaleH!: d3.ScaleLinear<number, number>;
+    private xScaleHPos!: d3.ScaleLinear<number, number>;
     private events: IVisualEventService;
     private locale: string;
     private allowInteractions!: boolean;
@@ -551,21 +555,25 @@ export class Visual implements IVisual {
         this.visualSettings.yAxisFormatting.YAxisDataPointRangeStart = this.minValue;
         this.visualSettings.yAxisFormatting.YAxisDataPointRangeEnd = this.maxValue;
 
+        this.yScale = d3.scaleLinear()
+            .domain([this.minValue, this.maxValue])
+            .range([this.innerHeight, 0]);
+        this.yScaleReverse = d3.scaleLinear()
+            .domain([this.maxValue, this.minValue])
+            .range([this.innerWidth + this.xAxisPosition - this.scrollbarBreath, 0]);
+        this.xScaleH = d3.scaleLinear()
+            .domain([this.minValue, this.maxValue])
+            .range([this.innerWidth + this.xAxisPosition - this.scrollbarBreath, 0]);
+        this.xScaleHPos = d3.scaleLinear()
+            .domain([this.minValue, this.maxValue])
+            .range([0, this.innerWidth + this.xAxisPosition - this.scrollbarBreath]);
 
     }
     private createYAxis(gParent: any, adjustLeft: any) {
 
         var g = gParent.append('g').attr('class', 'yAxisParentGroup');
 
-
-        var yScale = d3.scaleLinear()
-            .domain([this.minValue, this.maxValue])
-            .range([this.innerHeight, 0]);
-
-
-
-
-        var yAxisScale = d3.axisLeft(yScale).tickValues(this.yScaleTickValues);
+        var yAxisScale = d3.axisLeft(this.yScale).tickValues(this.yScaleTickValues);
 
 
         if (this.visualSettings.yAxisFormatting.show) {
@@ -613,14 +621,11 @@ export class Visual implements IVisual {
     private getYaxisWidth(gParent: any) {
 
         var g = gParent.append('g').attr('class', 'yAxisParentGroup');
-        var yScale = d3.scaleLinear()
-            .domain([this.minValue, this.maxValue])
-            .range([this.innerHeight, 0]);
 
         /*var ticksCount = 5;
-        var staticYscaleTIcks = yScale.ticks(ticksCount);*/
+        var staticYscaleTIcks = this.yScale.ticks(ticksCount);*/
 
-        var yAxisScale = d3.axisLeft(yScale).tickValues(this.yScaleTickValues);
+        var yAxisScale = d3.axisLeft(this.yScale).tickValues(this.yScaleTickValues);
 
         if (this.visualSettings.yAxisFormatting.show) {
             var yAxis = g.append('g')
@@ -651,9 +656,6 @@ export class Visual implements IVisual {
     private yBreakdown(d: any, i: number) {
         var yBreakdownValue = 0;
         var startingPointCumulative = 0
-        var yScale = d3.scaleLinear()
-            .domain([this.minValue, this.maxValue])
-            .range([this.innerHeight, 0]);
 
         //calculate the cumulative starting value        
         for (let index = 0; index < i; index++) {
@@ -672,7 +674,7 @@ export class Visual implements IVisual {
 
         if (d.isPillar == 1 || i == 0) {
         } else {
-            yBreakdownValue = yScale(0) - yScale(startingPointCumulative);
+            yBreakdownValue = this.yScale(0) - this.yScale(startingPointCumulative);
         }
 
         return yBreakdownValue;
@@ -680,45 +682,39 @@ export class Visual implements IVisual {
 
     private getYPosition(d: any, i: number) {
         var Yposition = 0;
-        var yScale = d3.scaleLinear()
-            .domain([this.minValue, this.maxValue])
-            .range([this.innerHeight, 0]);
 
         if ((d.isPillar == 1 || i == 0) && d.value < 0) {
             if (this.maxValue >= 0) {
-                Yposition = yScale(0);
+                Yposition = this.yScale(0);
             } else {
-                Yposition = yScale(this.maxValue);
+                Yposition = this.yScale(this.maxValue);
             }
         } else {
-            Yposition = yScale(d.value) - this.yBreakdown(d, i);
+            Yposition = this.yScale(d.value) - this.yBreakdown(d, i);
         }
         return parseFloat(Yposition.toFixed(2)); //Math.round(Yposition,2);
     }
     private getHeight(d: any, i: number) {
-        var yScale = d3.scaleLinear()
-            .domain([this.minValue, this.maxValue])
-            .range([this.innerHeight, 0]);
         if (d.isPillar == 1 || i == 0) {
             if (d.value > 0) {
                 if (this.minValue < 0) {
-                    return yScale(0) - yScale(d.value);
+                    return this.yScale(0) - this.yScale(d.value);
 
                 } else {
-                    return yScale(0) - yScale(Math.abs(d.value) - this.minValue);
+                    return this.yScale(0) - this.yScale(Math.abs(d.value) - this.minValue);
 
                 }
 
             } else {
                 if (this.maxValue >= 0) {
-                    return yScale(d.value) - yScale(0);
+                    return this.yScale(d.value) - this.yScale(0);
                 } else {
-                    return yScale(d.value) - yScale(this.maxValue);
+                    return this.yScale(d.value) - this.yScale(this.maxValue);
                 }
             }
         } else {
 
-            return yScale(0) - yScale(Math.abs(d.value));
+            return this.yScale(0) - this.yScale(Math.abs(d.value));
         }
     }
 
@@ -736,9 +732,6 @@ export class Visual implements IVisual {
                     heightAdjustment = nodes[i].getBoundingClientRect().height;
                 }
             })
-            var yScale = d3.scaleLinear()
-                .domain([this.minValue, this.maxValue])
-                .range([this.innerHeight, 0]);
             switch (d.customLabelPositioning) {
 
                 case "Inside end":
@@ -753,7 +746,7 @@ export class Visual implements IVisual {
                     }
 
                     //if the label touches the x-axis then show on top                    
-                    if (yPosition >= yScale(0)) {
+                    if (yPosition >= this.yScale(0)) {
                         yPosition = this.getYPosition(d, i) - 5;
                     };
                     break;
@@ -773,7 +766,7 @@ export class Visual implements IVisual {
                     yPosition = this.getYPosition(d, i) + this.getHeight(d, i) + heightAdjustment;
                     //if the label touches the x-axis then show on top
                     if (this.minValue >= 0 && this.maxValue >= 0) {
-                        if (yPosition >= yScale(0)) {
+                        if (yPosition >= this.yScale(0)) {
                             yPosition = this.getYPosition(d, i) - 5;
                         }
                     }
@@ -2422,11 +2415,8 @@ export class Visual implements IVisual {
     private xBreakdownHorizontal(d: any, i: number) {
         var yBreakdownValue = 0;
         var startingPointCumulative = 0
-        var yScale = d3.scaleLinear()
-            .domain([this.minValue, this.maxValue])
-            .range([this.innerWidth + this.xAxisPosition - this.scrollbarBreath, 0]);
 
-        //calculate the cumulative starting value        
+        //calculate the cumulative starting value
         for (let index = 0; index < i; index++) {
             if (this.barChartData[index].isPillar == 1 || index == 0) {
                 startingPointCumulative = this.yValue(this.barChartData[index]);
@@ -2435,7 +2425,7 @@ export class Visual implements IVisual {
             }
         }
 
-        //if the current breakdown is negative, reduce the value else do nothing. 
+        //if the current breakdown is negative, reduce the value else do nothing.
         if (this.yValue(d) < 0) {
             startingPointCumulative += Math.abs(this.yValue(d));
         }
@@ -2443,7 +2433,7 @@ export class Visual implements IVisual {
 
         if (d.isPillar == 1 || i == 0) {
         } else {
-            yBreakdownValue = yScale(this.minValue) - yScale(startingPointCumulative);
+            yBreakdownValue = this.xScaleH(this.minValue) - this.xScaleH(startingPointCumulative);
         }
 
         return yBreakdownValue;
@@ -2452,24 +2442,20 @@ export class Visual implements IVisual {
 
         var Yposition = 0;
 
-        var yScale = d3.scaleLinear()
-            .domain([this.minValue, this.maxValue])
-            .range([0, this.innerWidth + this.xAxisPosition - this.scrollbarBreath])
-
         if (d.isPillar == 1 || i == 0) {
             if (d.value > 0) {
                 if (this.minValue < 0) {
-                    Yposition = yScale(0)
+                    Yposition = this.xScaleHPos(0)
 
                 } /*else {
-                    Yposition = yScale(0) - yScale(Math.abs(d.value) - this.minValue);
+                    Yposition = this.xScaleHPos(0) - this.xScaleHPos(Math.abs(d.value) - this.minValue);
                 }*/
 
             } else {
                 if (this.maxValue >= 0) {
-                    Yposition = yScale(0) - this.getWidthHorizontal(d, i);
+                    Yposition = this.xScaleHPos(0) - this.getWidthHorizontal(d, i);
                 } /*else {
-                    Yposition = yScale(0);
+                    Yposition = this.xScaleHPos(0);
                 }*/
             }
         } else if (d.value < 0) {
@@ -2480,29 +2466,26 @@ export class Visual implements IVisual {
         return Yposition;
     }
     private getWidthHorizontal(d: any, i: number) {
-        var yScale = d3.scaleLinear()
-            .domain([this.minValue, this.maxValue])
-            .range([this.innerWidth + this.xAxisPosition - this.scrollbarBreath, 0]);
         if (d.isPillar == 1 || i == 0) {
             if (d.value > 0) {
                 if (this.minValue < 0) {
-                    return yScale(0) - yScale(d.value);
+                    return this.xScaleH(0) - this.xScaleH(d.value);
 
                 } else {
-                    return yScale(0) - yScale(Math.abs(d.value) - this.minValue);
+                    return this.xScaleH(0) - this.xScaleH(Math.abs(d.value) - this.minValue);
 
                 }
 
             } else {
                 if (this.maxValue >= 0) {
-                    return yScale(d.value) - yScale(0);
+                    return this.xScaleH(d.value) - this.xScaleH(0);
                 } else {
-                    return yScale(d.value) - yScale(this.maxValue);
+                    return this.xScaleH(d.value) - this.xScaleH(this.maxValue);
                 }
             }
         } else {
 
-            return yScale(0) - yScale(Math.abs(d.value));
+            return this.xScaleH(0) - this.xScaleH(Math.abs(d.value));
         }
     }
 
@@ -2941,14 +2924,7 @@ export class Visual implements IVisual {
 
 
         //recreate yScale using the new values
-        var yScale = d3.scaleLinear()
-            .domain([this.maxValue, this.minValue])
-            .range([this.innerWidth + this.xAxisPosition - this.scrollbarBreath
-                , 0]);
-
-
-
-        var yAxisScale = d3.axisBottom(yScale).tickValues(this.yScaleTickValues);
+        var yAxisScale = d3.axisBottom(this.yScaleReverse).tickValues(this.yScaleTickValues);
 
 
         if (this.visualSettings.yAxisFormatting.show) {
@@ -2989,14 +2965,11 @@ export class Visual implements IVisual {
     private getYaxisHeightHorizontal(gParent: any) {
 
         var g = gParent.append('g').attr('class', 'yAxisParentGroup');
-        var yScale = d3.scaleLinear()
-            .domain([this.minValue, this.maxValue])
-            .range([this.innerHeight, 0]);
 
         /*var ticksCount = 5;
-        var staticYscaleTIcks = yScale.ticks(ticksCount);*/
+        var staticYscaleTIcks = this.yScale.ticks(ticksCount);*/
 
-        var yAxisScale = d3.axisBottom(yScale).tickValues(this.yScaleTickValues);
+        var yAxisScale = d3.axisBottom(this.yScale).tickValues(this.yScaleTickValues);
 
         if (this.visualSettings.yAxisFormatting.show) {
             var yAxis = g.append('g')

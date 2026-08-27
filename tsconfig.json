@@ -3,13 +3,15 @@
         "allowJs": false,
         "emitDecoratorMetadata": true,
         "experimentalDecorators": true,
-        "target": "es6",
-        "sourceMap": true,
-        "outDir": "./.tmp/build/",
+        "target": "es2022",
+        "module": "es2022",
         "moduleResolution": "node",
-        "declaration": true,
+        "sourceMap": true,
+        "skipLibCheck": true,
+        "noImplicitReturns": true,
+        "noFallthroughCasesInSwitch": true,
         "lib": [
-            "es2015",
+            "es2022",
             "dom"
         ]
     },

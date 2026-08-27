@@ -13,17 +13,18 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 22
           cache: npm
 
       - run: npm ci
 
       - run: npm run lint
 
-      # Generates a throwaway self-signed cert; pbiviz prints a cert status line on start.
-      - run: npx pbiviz --install-cert
+      - run: npm audit --omit=dev --audit-level=high
 
-      - run: npx pbiviz package
+      - run: npm test
+
+      - run: npm run package
 
       - uses: actions/upload-artifact@v4
         with:

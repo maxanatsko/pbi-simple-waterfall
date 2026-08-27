@@ -1,7 +1,7 @@
 # Changelog
 
-All notable changes to the Simple Waterfall Power BI visual are documented in
-this file.
+All notable changes to the Multi-Step Waterfall Power BI visual (formerly
+"Simple Waterfall") are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Power BI custom visuals use a four-part `major.minor.patch.build` version scheme;
@@ -9,26 +9,31 @@ the authoritative version is in [`pbiviz.json`](pbiviz.json).
 
 ## [Unreleased]
 
-### Changed
-- Maintainership moved to Maxim Anatsko (fork of the original by Nishant Jain).
-  Updated `author` in `package.json` / `pbiviz.json`, `supportUrl`, and the
-  `LICENSE` copyright notice (the original 2019 notice is retained).
-- Repository cleanup: removed committed build artifacts (`Beta Version/`,
-  `webpack.statistics.*.html`), Visual Studio local state (`.vs/`), and leftover
-  debug files from version control; rewrote `.gitignore`.
-- Renamed `Version History.md` to `CHANGELOG.md` and `Private Policy` to
-  `PRIVACY.md`; added `CONTRIBUTING.md`.
-- Migrated linting from TSLint (end-of-life) to ESLint with
-  `eslint-plugin-powerbi-visuals`.
-- Added `.editorconfig`, a GitHub Actions build workflow, and standard
-  `package.json` metadata.
-- Renamed `assets/icon-visual.png` to `assets/icon.png` and pointed
-  `pbiviz.json` at it.
+## [3.0.0.0]
 
-### Known limitations
-- `supportsKeyboardFocus` is not enabled — keyboard navigation of chart elements
-  is not yet implemented.
-- TypeScript `strict` mode is off for `src/visual.ts`.
+Renamed from **Simple Waterfall** to **Multi-Step Waterfall**. This is a fork of
+the original visual by Nishant Jain, now maintained by Maxim Anatsko and
+published as its own AppSource entry.
+
+### Added
+- **Keyboard navigation.** Tab to the chart, move between bars with the arrow
+  keys (and Home / End), press Enter or Space to select, Ctrl / Shift to add to
+  the selection, and Esc to clear. The focused bar shows a visible outline.
+- **High-contrast mode support.** Bars, labels and selection follow the Windows
+  high-contrast theme colours.
+
+### Changed
+- Rebuilt the format pane on Power BI's current formatting API and refreshed the
+  underlying build to the latest Power BI visuals API (5.11). Every existing
+  option is unchanged — sentiment and per-bar colours, per-bar pillar toggles
+  and conditional formatting all behave as before.
+
+### Removed
+- The **"Negative value in brackets"** label option, which had no effect.
+
+### Fixed
+- The labels on/off switch is now labelled **"Show Labels"** (previously an
+  unnamed placeholder).
 
 ## [2.0.7] – [2.0.10.4]
 

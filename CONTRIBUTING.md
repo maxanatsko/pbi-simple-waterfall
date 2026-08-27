@@ -11,7 +11,7 @@ version (see [`pbiviz.json`](pbiviz.json)), Power BI environment
 
 ## Development setup
 
-Requires Node.js 18+ and the Power BI visuals tools.
+Requires Node.js 20.19+ and the Power BI visuals tools.
 
 ```bash
 git clone https://github.com/maxanatsko/pbi-simple-waterfall.git
@@ -19,7 +19,7 @@ cd pbi-simple-waterfall
 npm install
 
 # One-time: install the local dev certificate
-npm run pbiviz -- --install-cert
+npx pbiviz install-cert
 
 # Start the dev server (run twice the first time if the cert step just ran)
 npm start
@@ -45,10 +45,31 @@ append this to the report URL before importing:
 - Source lives in `src/` (`visual.ts` is the entry point declared in
   `tsconfig.json`). Visual capabilities are in `capabilities.json`; styling in
   `style/visual.less`.
+- The format pane is defined in `src/settings.ts`
+  (`VisualFormattingSettingsModel`) and served via `getFormattingModel`. The
+  legacy `DataViewObjectsParser` model in the same file is still used for reads
+  in `visual.ts`; keep the defaults of the two in sync.
 - Keep changes to visual behaviour documented in
   [`CHANGELOG.md`](CHANGELOG.md) under `## [Unreleased]`.
 - Bump the version in `pbiviz.json` (and `package.json`) when producing a
   release build.
+
+## Build environment notes
+
+- Use Node 20.19+ (`.nvmrc` pins 22).
+- `npm run package` goes through `scripts/package.mjs`, not `pbiviz package`
+  directly. `powerbi-visuals-tools` 7.2.x with webpack 5.10x intermittently
+  throws `No such label 'emitAssets'` from a post-build logging hook *after* the
+  `.pbiviz` has been written and the build has reported success. The wrapper
+  treats a completed build with a fresh `dist/*.pbiviz` as success and still
+  fails on any real build error. `webpack` is pinned to `5.105.4` via
+  `overrides` to reduce how often this fires.
+- The build runs with `--all-locales` because the current
+  `powerbi-visuals-webpack-plugin` localisation loader cannot parse the ESM
+  `powerbiGlobalizeLocales.js` shipped by `powerbi-visuals-utils-formattingutils`
+  7. This bundles all locale strings rather than only `en-US`.
+- TypeScript `strict` mode is off for `src/visual.ts` — a strict-mode migration
+  is deferred to a follow-up.
 
 ## Useful references
 

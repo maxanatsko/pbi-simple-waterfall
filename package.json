@@ -1,7 +1,7 @@
 {
     "name": "pbi-simple-waterfall",
-    "version": "2.0.10.4",
-    "description": "Simple Waterfall - a Power BI custom visual for multi-step waterfall charts.",
+    "version": "3.0.0",
+    "description": "Multi-Step Waterfall - a Power BI custom visual for multi-step waterfall charts.",
     "license": "MIT",
     "author": "Maxim Anatsko <max@maxanatsko.com>",
     "contributors": [
@@ -15,31 +15,39 @@
         "url": "https://github.com/maxanatsko/pbi-simple-waterfall/issues"
     },
     "homepage": "https://github.com/maxanatsko/pbi-simple-waterfall#readme",
+    "engines": {
+        "node": ">=20.19.0"
+    },
     "scripts": {
         "pbiviz": "pbiviz",
-        "start": "pbiviz start",
-        "package": "pbiviz package",
-        "lint": "eslint src --ext .ts",
+        "start": "pbiviz start --all-locales",
+        "package": "node scripts/package.mjs",
+        "lint": "eslint src test",
+        "test": "vitest run",
         "npmVersion": "npm list --depth=0"
     },
     "dependencies": {
-        "@types/d3": "5.5.0",
-        "core-js": "^3.20.0",
-        "d3": "5.5.0",
-        "powerbi-visuals-api": "~4.2.0",
-        "powerbi-visuals-tools": "^4.0.2",
-        "powerbi-visuals-utils-dataviewutils": "^2.4.1",
-        "powerbi-visuals-utils-formattingutils": "^4.7.1",
-        "powerbi-visuals-utils-tooltiputils": "^2.5.2",
-        "powerbi-visuals-utils-typeutils": "^2.3.1",
-        "regenerator-runtime": "^0.13.9"
+        "d3": "^7.9.0",
+        "powerbi-visuals-api": "5.11.0",
+        "powerbi-visuals-utils-dataviewutils": "^7.0.0",
+        "powerbi-visuals-utils-formattingmodel": "^7.1.0",
+        "powerbi-visuals-utils-formattingutils": "^7.0.0",
+        "powerbi-visuals-utils-tooltiputils": "^7.0.0",
+        "powerbi-visuals-utils-typeutils": "^7.0.0"
+    },
+    "overrides": {
+        "webpack": "5.105.4"
     },
     "devDependencies": {
-        "@typescript-eslint/eslint-plugin": "^5.62.0",
-        "@typescript-eslint/parser": "^5.62.0",
-        "eslint": "^7.32.0",
-        "eslint-plugin-powerbi-visuals": "^0.8.1",
-        "ts-loader": "5.2.2",
-        "typescript": "^3.9.10"
+        "@types/d3": "^7.4.3",
+        "@types/node": "^22.10.0",
+        "eslint": "^9.39.0",
+        "eslint-plugin-powerbi-visuals": "^1.1.1",
+        "happy-dom": "^20.11.10",
+        "powerbi-visuals-tools": "^7.2.1",
+        "powerbi-visuals-utils-testutils": "^7.0.1",
+        "typescript": "~5.9.3",
+        "typescript-eslint": "^8.57.2",
+        "vitest": "^3.2.7"
     }
 }

@@ -1,15 +1,15 @@
 {
     "visual": {
-        "name": "Simple Waterfall",
-        "displayName": "Simple Waterfall",
-        "guid": "SimpleWaterfall",
+        "name": "Multi-Step Waterfall",
+        "displayName": "Multi-Step Waterfall",
+        "guid": "MultiStepWaterfallCC31B0DC3B9840DA986AEAB4DBA3D371",
         "visualClassName": "Visual",
-        "version": "2.0.10.4",
-        "description": "A simple waterfall allowing users to create multi step waterfall",
+        "version": "3.0.0.0",
+        "description": "Build multi-step waterfall charts: define pillars from categories or measures, choose a vertical or horizontal layout, and format every element.",
         "supportUrl": "https://maxanatsko.com",
         "gitHubUrl": "https://github.com/maxanatsko/pbi-simple-waterfall"
     },
-    "apiVersion": "4.2.0",
+    "apiVersion": "5.11.0",
     "author": {
         "name": "Maxim Anatsko",
         "email": "max@maxanatsko.com"

@@ -1,9 +1,13 @@
-# Simple Waterfall
+# Multi-Step Waterfall
 
 A Power BI custom visual for building multi-step waterfall charts. Define pillars
 from categories or measures, choose a vertical or horizontal layout, and format
 every element of the chart — individual bar colours, labels, axes, gridlines,
 margins and more.
+
+Formerly published as "Simple Waterfall"; renamed on the 3.0.0.0 modernisation
+(new toolchain, `getFormattingModel` format pane, keyboard and high-contrast
+support). See [`CHANGELOG.md`](CHANGELOG.md).
 
 Current version is tracked in [`pbiviz.json`](pbiviz.json); release notes are in
 [`CHANGELOG.md`](CHANGELOG.md).
@@ -38,13 +42,14 @@ Current version is tracked in [`pbiviz.json`](pbiviz.json); release notes are in
 
 ## Development
 
-Requires Node.js 18+.
+Requires Node.js 20.19+.
 
 ```bash
 npm install
-npm run pbiviz -- --install-cert   # one-time dev certificate
+npx pbiviz install-cert            # one-time dev certificate (for npm start)
 npm start                          # dev server
 npm run lint                       # ESLint
+npm test                           # vitest smoke suite
 npm run package                    # build dist/*.pbiviz
 ```
 

@@ -44,7 +44,7 @@ import DataViewMatrix = powerbi.DataViewMatrix;
 import * as d3 from "d3";
 import { valueFormatter } from "powerbi-visuals-utils-formattingutils";
 import VisualTooltipDataItem = powerbi.extensibility.VisualTooltipDataItem;
-import { VisualSettings, VisualFormattingSettingsModel } from "./settings";
+import { VisualSettings, VisualFormattingSettingsModel, DEFAULT_GREY } from "./settings";
 import { FormattingSettingsService } from "powerbi-visuals-utils-formattingmodel";
 import { Orientation, OrientationName } from "./orientation";
 
@@ -499,6 +499,20 @@ export class Visual implements IVisual {
         });
 
     }
+    private styledAxisGroup(parent: any, settings: { fontSize: number; fontFamily: string; fontColor: string }, axisClass: string) {
+        return parent.append('g')
+            .style("font", settings.fontSize + "pt times")
+            .style("font-family", settings.fontFamily)
+            .style("color", settings.fontColor)
+            .attr('class', axisClass);
+    }
+    private applyGridlineStyle(selection: any, color: string, strokeWidth?: string) {
+        selection.style('fill', 'none').style('stroke', color);
+        if (strokeWidth !== undefined) {
+            selection.style('stroke-width', strokeWidth);
+        }
+        return selection;
+    }
     private measureCrossAxis(gParent: any) {
         const o = this.orientation;
         var g = gParent.append('g').attr('class', 'yAxisParentGroup');
@@ -506,22 +520,18 @@ export class Visual implements IVisual {
         var yAxisScale = o.crossAxisGenerator().tickValues(this.yScaleTickValues);
 
         if (this.visualSettings.yAxisFormatting.show) {
-            var yAxis = g.append('g')
-                .style("font", this.visualSettings.yAxisFormatting.fontSize + "pt times")
-                .style("font-family", this.visualSettings.yAxisFormatting.fontFamily)
-                .style("color", this.visualSettings.yAxisFormatting.fontColor)
-                .attr('class', 'myYaxis');
+            var yAxis = this.styledAxisGroup(g, this.visualSettings.yAxisFormatting, 'myYaxis');
 
             yAxisScale.tickFormat(d => this.formatValueForYAxis(d));
 
             yAxis.call(yAxisScale);
 
-            yAxis.selectAll('path').style('fill', 'none').style('stroke', 'black').style('stroke-width', "0pt");
+            this.applyGridlineStyle(yAxis.selectAll('path'), 'black', "0pt");
             if (this.visualSettings.yAxisFormatting.showGridLine) {
 
-                yAxis.selectAll('line').style('fill', 'none').style('stroke', this.visualSettings.yAxisFormatting.gridLineColor).style('stroke-width', this.gridlineStrokeWidth("y") / 10 + "pt");
+                this.applyGridlineStyle(yAxis.selectAll('line'), this.visualSettings.yAxisFormatting.gridLineColor, this.gridlineStrokeWidth("y") / 10 + "pt");
             } else {
-                yAxis.selectAll('line').style('fill', 'none').style('stroke', this.visualSettings.yAxisFormatting.gridLineColor).style('stroke-width', "0pt");
+                this.applyGridlineStyle(yAxis.selectAll('line'), this.visualSettings.yAxisFormatting.gridLineColor, "0pt");
             }
 
             // adjust the chart area according to the width/height of the cross axis
@@ -543,28 +553,24 @@ export class Visual implements IVisual {
         var yAxisScale = o.crossAxisGenerator().tickValues(this.yScaleTickValues);
 
         if (this.visualSettings.yAxisFormatting.show) {
-            var yAxis = g.append('g')
-                .style("font", this.visualSettings.yAxisFormatting.fontSize + "pt times")
-                .style("font-family", this.visualSettings.yAxisFormatting.fontFamily)
-                .style("color", this.visualSettings.yAxisFormatting.fontColor)
-                .attr('class', 'myYaxis');
+            var yAxis = this.styledAxisGroup(g, this.visualSettings.yAxisFormatting, 'myYaxis');
             yAxisScale.tickFormat(d => this.formatValueForYAxis(d));
 
             yAxis.call(yAxisScale);
             if (!this.visualSettings.yAxisFormatting.showYAxisValues) {
                 yAxis.selectAll('text').style('visibility', 'hidden');
             }
-            yAxis.selectAll('path').style('fill', 'none').style('stroke', 'black').style('stroke-width', "0pt");
+            this.applyGridlineStyle(yAxis.selectAll('path'), 'black', "0pt");
 
             if (this.visualSettings.yAxisFormatting.showGridLine) {
-                yAxis.selectAll('line').style('fill', 'none').style('stroke', this.visualSettings.yAxisFormatting.gridLineColor).style('stroke-width', this.gridlineStrokeWidth("y") / 10 + "pt");
+                this.applyGridlineStyle(yAxis.selectAll('line'), this.visualSettings.yAxisFormatting.gridLineColor, this.gridlineStrokeWidth("y") / 10 + "pt");
             } else {
-                yAxis.selectAll('line').style('fill', 'none').style('stroke', this.visualSettings.yAxisFormatting.gridLineColor).style('stroke-width', "0pt");
+                this.applyGridlineStyle(yAxis.selectAll('line'), this.visualSettings.yAxisFormatting.gridLineColor, "0pt");
             }
             if (this.visualSettings.yAxisFormatting.showZeroAxisGridLine) {
                 yAxis.selectAll('line').each((d: any, i: number, nodes: any) => {
                     if (d == 0) {
-                        d3.select(nodes[i]).style('fill', 'none').style('stroke', this.visualSettings.yAxisFormatting.zeroLineColor).style('stroke-width', this.visualSettings.yAxisFormatting.zeroLineStrokeWidth / 10 + "pt");
+                        this.applyGridlineStyle(d3.select(nodes[i]), this.visualSettings.yAxisFormatting.zeroLineColor, this.visualSettings.yAxisFormatting.zeroLineStrokeWidth / 10 + "pt");
                     }
                 });
             }
@@ -939,7 +945,7 @@ export class Visual implements IVisual {
         return { min, max };
     }
     private getfillColor(isPillar: number, value: number) {
-        var barColor: string = "#777777";
+        var barColor: string = DEFAULT_GREY;
         if (this.isHighContrast) {
             return this.hcBackground;
         }
@@ -985,6 +991,45 @@ export class Visual implements IVisual {
         }
 
     }
+    private applyPerPointFormatting(dataPoint: BarChartDataPoint, objects: any, gateFontColorOnSentiment: boolean = true, gateLabelPositioningOnSentiment: boolean = true) {
+        if (objects) {
+            if (objects.sentimentColor && !this.visualSettings.chartOrientation.useSentimentFeatures) {
+                dataPoint.customBarColor = (objects as any)["sentimentColor"]["fill"]["solid"]["color"];
+            } else {
+                dataPoint.customBarColor = this.getfillColor(dataPoint.isPillar, dataPoint.value);
+            }
+
+            const fontColorEnabled = gateFontColorOnSentiment
+                ? !this.visualSettings.chartOrientation.useSentimentFeatures
+                : true;
+            if (objects.LabelsFormatting && fontColorEnabled && !this.visualSettings.LabelsFormatting.useDefaultFontColor) {
+                if (objects.LabelsFormatting.fill) {
+                    dataPoint.customFontColor = (objects as any)["LabelsFormatting"]["fill"]["solid"]["color"];
+                } else {
+                    dataPoint.customFontColor = this.getLabelFontColor(dataPoint.isPillar, dataPoint.value);
+                }
+            } else {
+                dataPoint.customFontColor = this.getLabelFontColor(dataPoint.isPillar, dataPoint.value);
+            }
+
+            const labelPositionEnabled = gateLabelPositioningOnSentiment
+                ? !this.visualSettings.chartOrientation.useSentimentFeatures
+                : true;
+            if (objects.LabelsFormatting && labelPositionEnabled && !this.visualSettings.LabelsFormatting.useDefaultLabelPositioning) {
+                if (objects.LabelsFormatting.labelPosition) {
+                    dataPoint.customLabelPositioning = objects["LabelsFormatting"]["labelPosition"] as string;
+                } else {
+                    dataPoint.customLabelPositioning = this.getLabelPosition(dataPoint.isPillar, dataPoint.value);
+                }
+            } else {
+                dataPoint.customLabelPositioning = this.getLabelPosition(dataPoint.isPillar, dataPoint.value);
+            }
+        } else {
+            dataPoint.customBarColor = this.getfillColor(dataPoint.isPillar, dataPoint.value);
+            dataPoint.customFontColor = this.getLabelFontColor(dataPoint.isPillar, dataPoint.value);
+            dataPoint.customLabelPositioning = this.getLabelPosition(dataPoint.isPillar, dataPoint.value);
+        }
+    }
     private getDataStaticWaterfall(options: VisualUpdateOptions) {
         const dataView = this.requireMatrixDataView(options);
 
@@ -1025,30 +1070,7 @@ export class Visual implements IVisual {
                                 data2.displayName = dataView.matrix.valueSources[index].displayName;
                             }
                         }
-                        if (y.objects.sentimentColor && !this.visualSettings.chartOrientation.useSentimentFeatures) {
-                            data2.customBarColor = (y.objects as any)["sentimentColor"]["fill"]["solid"]["color"];
-                        } else {
-                            data2.customBarColor = this.getfillColor(data2.isPillar, data2.value);
-                        }
-                        if (y.objects.LabelsFormatting && !this.visualSettings.chartOrientation.useSentimentFeatures && !this.visualSettings.LabelsFormatting.useDefaultFontColor) {
-                            if (y.objects.LabelsFormatting.fill) {
-                                data2.customFontColor = (y.objects as any)["LabelsFormatting"]["fill"]["solid"]["color"];
-                            } else {
-                                data2.customFontColor = this.getLabelFontColor(data2.isPillar, data2.value);
-                            }
-                        } else {
-                            data2.customFontColor = this.getLabelFontColor(data2.isPillar, data2.value);
-                        }
-
-                        if (y.objects.LabelsFormatting && !this.visualSettings.chartOrientation.useSentimentFeatures && !this.visualSettings.LabelsFormatting.useDefaultLabelPositioning) {
-                            if (y.objects.LabelsFormatting.labelPosition) {
-                                data2.customLabelPositioning = y.objects["LabelsFormatting"]["labelPosition"] as string;
-                            } else {
-                                data2.customLabelPositioning = this.getLabelPosition(data2.isPillar, data2.value);
-                            }
-                        } else {
-                            data2.customLabelPositioning = this.getLabelPosition(data2.isPillar, data2.value);
-                        }
+                        this.applyPerPointFormatting(data2, y.objects);
                     } else {
 
                         if (dataView.matrix.valueSources[index].displayName.substring(0, 1) != "_") {
@@ -1060,9 +1082,7 @@ export class Visual implements IVisual {
                             data2.category = dataView.matrix.valueSources[index].displayName;
                             data2.displayName = dataView.matrix.valueSources[index].displayName;
                         }
-                        data2.customBarColor = this.getfillColor(data2.isPillar, data2.value);
-                        data2.customFontColor = this.getLabelFontColor(data2.isPillar, data2.value);
-                        data2.customLabelPositioning = this.getLabelPosition(data2.isPillar, data2.value);
+                        this.applyPerPointFormatting(data2, y.objects);
                     }
                     data2.toolTipValue1Formatted = this.formatValueforLabels(data2);
                     data2.toolTipDisplayValue1 = data2.category;
@@ -1244,36 +1264,10 @@ export class Visual implements IVisual {
                         data2.displayName = x.value; */
                         data2.isPillar = 0;
                     }
-                    if (x.objects.sentimentColor && !this.visualSettings.chartOrientation.useSentimentFeatures) {
-                        data2.customBarColor = (x.objects as any)["sentimentColor"]["fill"]["solid"]["color"];
-                    } else {
-                        data2.customBarColor = this.getfillColor(data2.isPillar, data2.value);
-                    }
-                    if (x.objects.LabelsFormatting && !this.visualSettings.LabelsFormatting.useDefaultFontColor) {
-                        if (x.objects.LabelsFormatting.fill) {
-                            data2.customFontColor = (x.objects as any)["LabelsFormatting"]["fill"]["solid"]["color"];
-                        } else {
-                            data2.customFontColor = this.getLabelFontColor(data2.isPillar, data2.value);
-                        }
-
-                    } else {
-                        data2.customFontColor = this.getLabelFontColor(data2.isPillar, data2.value);
-                    }
-
-                    if (x.objects.LabelsFormatting && !this.visualSettings.chartOrientation.useSentimentFeatures && !this.visualSettings.LabelsFormatting.useDefaultLabelPositioning) {
-                        if (x.objects.LabelsFormatting.labelPosition) {
-                            data2.customLabelPositioning = x.objects["LabelsFormatting"]["labelPosition"] as string;
-                        } else {
-                            data2.customLabelPositioning = this.getLabelPosition(data2.isPillar, data2.value);
-                        }
-                    } else {
-                        data2.customLabelPositioning = this.getLabelPosition(data2.isPillar, data2.value);
-                    }
+                    this.applyPerPointFormatting(data2, x.objects, false);
                 } else {
                     data2.isPillar = 0;
-                    data2.customBarColor = this.getfillColor(data2.isPillar, data2.value);
-                    data2.customFontColor = this.getLabelFontColor(data2.isPillar, data2.value);
-                    data2.customLabelPositioning = this.getLabelPosition(data2.isPillar, data2.value);
+                    this.applyPerPointFormatting(data2, x.objects, false);
                 }
                 data2.toolTipValue1Formatted = this.formatValueforLabels(data2);
                 data2.toolTipDisplayValue1 = data2.category;
@@ -1821,15 +1815,11 @@ export class Visual implements IVisual {
     private createAxis(myxAxisParent: any, g: any, baseAxis: boolean, myWidth: any, index: number, xScale: any, xBaseScale: any, currData: any, allDataIndex: any, levels: any, xAxisrange: any, myAxisParentHeight: any) {
         const o = this.orientation;
         var myxAxisParentx = o.mainAxis(xScale);
-        myxAxisParent = g.append('g')
-            .style("font", this.visualSettings.xAxisFormatting.fontSize + "pt times")
-            .style("font-family", this.visualSettings.xAxisFormatting.fontFamily)
-            .style("color", this.visualSettings.xAxisFormatting.fontColor)
-            .attr('class', 'myXaxis')
+        myxAxisParent = this.styledAxisGroup(g, this.visualSettings.xAxisFormatting, 'myXaxis')
             .call(myxAxisParentx);
         myxAxisParent
-            .attr('transform', o.axisGroupTransform(baseAxis, index, xBaseScale, myWidth, myAxisParentHeight))
-            .selectAll('path').style('fill', 'none').style('stroke', this.visualSettings.yAxisFormatting.gridLineColor);
+            .attr('transform', o.axisGroupTransform(baseAxis, index, xBaseScale, myWidth, myAxisParentHeight));
+        this.applyGridlineStyle(myxAxisParent.selectAll('path'), this.visualSettings.yAxisFormatting.gridLineColor);
         var xAxislabels = myxAxisParent.selectAll(".tick text").data(currData).text((d: any) => d.displayName);
         if (this.visualType == "drillable" || this.visualType == "staticCategory" || this.visualType == "drillableCategory") {
             this.wireDataPointSelection(xAxislabels);
@@ -1837,15 +1827,23 @@ export class Visual implements IVisual {
         this.tooltipServiceWrapper.addTooltip(myxAxisParent.selectAll(".tick text"),
             (dataPoint: any) => this.getTooltipXaxis(dataPoint),
             () => (null as unknown as ISelectionId));
-        var wrapHelper = o.name === "Vertical"
-            ? (this.visualSettings.xAxisFormatting.labelWrapText ? this.labelWrapText : this.labelNoWrapText)
-            : (this.visualSettings.xAxisFormatting.labelWrapText ? this.wrapHorizontal : (text: any) => { });
+        const wrapOpts = o.name === "Vertical"
+            ? (this.visualSettings.xAxisFormatting.labelWrapText
+                ? { splitToken: "whitespace" as const, layout: "vertical" as const }
+                : { splitToken: "" as const, layout: "vertical" as const, maxLines: 3, ellipsis: true })
+            : (this.visualSettings.xAxisFormatting.labelWrapText
+                ? { splitToken: "whitespace" as const, layout: "horizontal" as const }
+                : null);
         if (allDataIndex != (levels - 1)) {
-            myxAxisParent.selectAll(".tick text").call(wrapHelper, xBaseScale.bandwidth());
+            if (wrapOpts) {
+                myxAxisParent.selectAll(".tick text").call(this.wrapLabels, xBaseScale.bandwidth(), wrapOpts);
+            }
             myxAxisParent.selectAll(".tick text").data(currData).attr('transform', (d: any, i: number) => o.secondaryTickLabelTransform(xAxisrange, i, this.visualSettings.xAxisFormatting.padding));
             myxAxisParent.selectAll("line").remove();
         } else {
-            myxAxisParent.selectAll(".tick text").call(wrapHelper, xBaseScale.bandwidth());
+            if (wrapOpts) {
+                myxAxisParent.selectAll(".tick text").call(this.wrapLabels, xBaseScale.bandwidth(), wrapOpts);
+            }
             xAxislabels.attr('transform', o.baseTickLabelTransform(this.visualSettings.xAxisFormatting.padding));
         }
         myxAxisParent.selectAll("text").each((d: any, i: number, nodes: any) => {
@@ -1876,7 +1874,7 @@ export class Visual implements IVisual {
     private createAxisGridlines(myxAxisParent: any, currData: any, allDataIndex: any, levels: any, xScale: any, xAxisrange: any) {
         const o = this.orientation;
         if (this.visualSettings.xAxisFormatting.showGridLine) {
-            myxAxisParent.selectAll('path').style('fill', 'none').style('stroke', this.visualSettings.xAxisFormatting.gridLineColor).style('stroke-width', this.gridlineStrokeWidth("x") / o.xGridlineStrokeDivisor + "pt");
+            this.applyGridlineStyle(myxAxisParent.selectAll('path'), this.visualSettings.xAxisFormatting.gridLineColor, this.gridlineStrokeWidth("x") / o.xGridlineStrokeDivisor + "pt");
             var myAxisTop = myxAxisParent.select("path").node()!.getBoundingClientRect().top;
             const catPos = (d: any, i: number) => allDataIndex == (levels - 1)
                 ? xScale(d.category) - (xScale.padding() * xScale.step()) / 2
@@ -1890,7 +1888,7 @@ export class Visual implements IVisual {
                 .attr("stroke-width", (d: any, i: number) => this.lineWidth(d, i))
                 .attr("stroke", this.visualSettings.xAxisFormatting.gridLineColor);
         } else {
-            myxAxisParent.selectAll('path').style('fill', 'none').style('stroke', this.visualSettings.xAxisFormatting.gridLineColor).style('stroke-width', "0pt");
+            this.applyGridlineStyle(myxAxisParent.selectAll('path'), this.visualSettings.xAxisFormatting.gridLineColor, "0pt");
         }
     }
 
@@ -1920,38 +1918,7 @@ export class Visual implements IVisual {
         data2.selectionId = this.host.createSelectionIdBuilder()
             .withMeasure(x.queryName ?? "")
             .createSelectionId();
-        if (x.objects) {
-            if (x.objects.sentimentColor && !this.visualSettings.chartOrientation.useSentimentFeatures) {
-                data2.customBarColor = (x.objects as any)["sentimentColor"]["fill"]["solid"]["color"];
-            } else {
-                data2.customBarColor = this.getfillColor(data2.isPillar, data2.value);
-            }
-
-            if (x.objects.LabelsFormatting && !this.visualSettings.chartOrientation.useSentimentFeatures && !this.visualSettings.LabelsFormatting.useDefaultFontColor) {
-                if (x.objects.LabelsFormatting.fill) {
-                    data2.customFontColor = (x.objects as any)["LabelsFormatting"]["fill"]["solid"]["color"];
-                } else {
-                    data2.customFontColor = this.getLabelFontColor(data2.isPillar, data2.value);
-                }
-
-            } else {
-                data2.customFontColor = this.getLabelFontColor(data2.isPillar, data2.value);
-            }
-
-            if (x.objects.LabelsFormatting && !this.visualSettings.LabelsFormatting.useDefaultLabelPositioning) {
-                if (x.objects.LabelsFormatting.labelPosition) {
-                    data2.customLabelPositioning = x.objects["LabelsFormatting"]["labelPosition"] as string;
-                } else {
-                    data2.customLabelPositioning = this.getLabelPosition(data2.isPillar, data2.value);
-                }
-            } else {
-                data2.customLabelPositioning = this.getLabelPosition(data2.isPillar, data2.value);
-            }
-        } else {
-            data2.customBarColor = this.getfillColor(data2.isPillar, data2.value);
-            data2.customFontColor = this.getLabelFontColor(data2.isPillar, data2.value);
-            data2.customLabelPositioning = this.getLabelPosition(data2.isPillar, data2.value);
-        }
+        this.applyPerPointFormatting(data2, x.objects, true, false);
 
         data2.toolTipValue1Formatted = this.formatValueforLabels(data2);
         data2.toolTipDisplayValue1 = data2.category;
@@ -1984,88 +1951,93 @@ export class Visual implements IVisual {
         return data2;
     }
 
-    private labelNoWrapText(text: any, standardwidth: any) {
+    private wrapLabels(text: any, standardwidth: any, opts: { splitToken: "" | "whitespace"; layout: "vertical" | "horizontal"; maxLines?: number; ellipsis?: boolean }) {
+        const isChar = opts.splitToken === "";
+        const joinSep = isChar ? "" : " ";
+        const maxLines = opts.maxLines ?? 0;
+        const ellipsis = opts.ellipsis ?? false;
 
-        var width;
-        text.each(function (this: SVGTextContentElement) {
-            var text = d3.select(this),
+        if (opts.layout === "horizontal") {
+            var textHeight = text.node()!.getBoundingClientRect().height;
+            var maxHeight = standardwidth * text.datum()["childrenCount"];
+            var tspanAllowed = Math.floor(maxHeight / textHeight);
 
-                word,
-                line: string[] = [],
-                lineNumber = 0,
-                lineHeight = 1,
-                y = text.attr("y"),
-                dy = parseFloat(text.attr("dy")),
-                joinwith = "";
+            text.each(function (this: SVGTextContentElement) {
+                var t = d3.select(this),
+                    words = t.text().split(/\s+/).reverse(),
+                    wordsPerLine = Math.ceil(words.length / tspanAllowed),
+                    word,
+                    line: string[] = [],
+                    lineNumber = 0,
+                    lineHeight = 1.1,
+                    y = t.attr("y"),
+                    dy = parseFloat(t.attr("dy")),
+                    tspan = t.text(null).append("tspan").attr("x", 0).attr("y", y).attr("dy", dy + "em");
 
-
-
-            width = standardwidth * (text.datum() as any)["childrenCount"];
-            joinwith = "";
-            var words = text.text().split("").reverse();
-
-
-            var tspan = text.text(null).append("tspan").attr("x", 0).attr("y", y).attr("dy", dy + "em");
-            while (word = words.pop()) {
-                line.push(word);
-                tspan.text(line.join(joinwith));
-                if (tspan.node()!.getComputedTextLength() > width) {
-
-                    // if the 3 lines goes over the standard width, then add "..." and stop adding any more lines
-                    if (line.length != 1) {
-                        if (lineNumber == 2) {
-                            tspan.text(tspan.text().substring(0, tspan.text().length - 3) + "...");
-                            break;
-                        } else {
-                            line.pop();
-                            tspan.text(line.join(joinwith));
-                            line = [word];
-                            tspan = text.append("tspan").attr("x", 0).attr("y", y).attr("dy", ++lineNumber * lineHeight + dy + "em").text(word);
-                        }
-                    } else {
-
+                var counter = 0;
+                while (word = words.pop()) {
+                    line.push(word);
+                    tspan.text(line.join(" "));
+                    counter++;
+                    if (counter + 1 > wordsPerLine && words.length > 0) {
+                        counter = 0;
+                        line = [];
+                        tspan.attr("y", -textHeight / 2);
+                        tspan = t.append("tspan").attr("x", 0).attr("y", -textHeight / 2).attr("dy", ++lineNumber * lineHeight + dy + "em");
                     }
                 }
+            });
+            return;
+        }
 
-            }
-        });
-    }
-    private labelWrapText(text: any, standardwidth: any) {
-        var width;
         text.each(function (this: SVGTextContentElement) {
-            var text = d3.select(this),
-                words = text.text().split(/\s+/).reverse(),
+            var t = d3.select(this),
+                words = isChar ? t.text().split("").reverse() : t.text().split(/\s+/).reverse(),
                 word,
                 line: string[] = [],
                 lineNumber = 0,
-                lineHeight = 1.1,
-                y = text.attr("y"),
-                dy = parseFloat(text.attr("dy")),
-                tspan = text.text(null).append("tspan").attr("x", 0).attr("y", y).attr("dy", dy + "em");
-            width = standardwidth * (text.datum() as any)["childrenCount"];
+                lineHeight = isChar ? 1 : 1.1,
+                y = t.attr("y"),
+                dy = parseFloat(t.attr("dy")),
+                tspan = t.text(null).append("tspan").attr("x", 0).attr("y", y).attr("dy", dy + "em");
+            var width = standardwidth * (t.datum() as any)["childrenCount"];
 
             while (word = words.pop()) {
                 line.push(word);
-                tspan.text(line.join(" "));
-
+                tspan.text(line.join(joinSep));
                 if (tspan.node()!.getComputedTextLength() > width) {
-
-                    if (line.length == 1) {
-                        var currline = line[0].split("");
-                        while (tspan.node()!.getComputedTextLength() > width) {
-                            currline.pop()
-                            line[0] = currline.join("");
-                            tspan.text(line[0]);
+                    if (isChar) {
+                        if (line.length != 1) {
+                            if (maxLines && lineNumber == maxLines - 1) {
+                                if (ellipsis) {
+                                    tspan.text(tspan.text().substring(0, tspan.text().length - 3) + "...");
+                                }
+                                break;
+                            } else {
+                                line.pop();
+                                tspan.text(line.join(joinSep));
+                                line = [word];
+                                tspan = t.append("tspan").attr("x", 0).attr("y", y).attr("dy", ++lineNumber * lineHeight + dy + "em").text(word);
+                            }
                         }
                     } else {
-                        line.pop();
-                        tspan.text(line.join(" "));
-                        line = [word];
-                        tspan = text.append("tspan").attr("x", 0).attr("y", y).attr("dy", ++lineNumber * lineHeight + dy + "em").text(word);
-                        currline = tspan.text().split("");
-                        while (tspan.node()!.getComputedTextLength() > width) {
-                            currline.pop();
-                            tspan.text(currline.join(""));
+                        if (line.length == 1) {
+                            var currline = line[0].split("");
+                            while (tspan.node()!.getComputedTextLength() > width) {
+                                currline.pop();
+                                line[0] = currline.join("");
+                                tspan.text(line[0]);
+                            }
+                        } else {
+                            line.pop();
+                            tspan.text(line.join(joinSep));
+                            line = [word];
+                            tspan = t.append("tspan").attr("x", 0).attr("y", y).attr("dy", ++lineNumber * lineHeight + dy + "em").text(word);
+                            currline = tspan.text().split("");
+                            while (tspan.node()!.getComputedTextLength() > width) {
+                                currline.pop();
+                                tspan.text(currline.join(""));
+                            }
                         }
                     }
                 }
@@ -2082,42 +2054,6 @@ export class Visual implements IVisual {
             tspan.attr('dx', diff);
 
         });
-    }
-
-    private wrapHorizontal(text: any, standardwidth: any) {
-
-        var textHeight = text.node()!.getBoundingClientRect().height;
-        var maxHeight = standardwidth * text.datum()["childrenCount"];
-        var tspanAllowed = Math.floor(maxHeight / textHeight);
-
-        text.each(function (this: SVGTextContentElement) {
-            var text = d3.select(this),
-                words = text.text().split(/\s+/).reverse(),
-                wordsPerLine = Math.ceil(words.length / tspanAllowed),
-                word,
-                line: string[] = [],
-                lineNumber = 0,
-                lineHeight = 1.1,
-                y = text.attr("y"),
-                dy = parseFloat(text.attr("dy")),
-                tspan = text.text(null).append("tspan").attr("x", 0).attr("y", y).attr("dy", dy + "em");
-
-
-            var counter = 0;
-            while (word = words.pop()) {
-                line.push(word);
-                tspan.text(line.join(" "));
-                counter++;
-                if (counter + 1 > wordsPerLine && words.length > 0) {
-                    counter = 0;
-                    line = [];
-                    tspan.attr("y", -textHeight / 2);
-
-                    tspan = text.append("tspan").attr("x", 0).attr("y", -textHeight / 2).attr("dy", ++lineNumber * lineHeight + dy + "em");
-                }
-            }
-        });
-
     }
     // Resolve the effective format string for a single matrix value cell.
     // A DAX dynamic format string is delivered per cell on

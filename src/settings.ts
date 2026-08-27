@@ -69,7 +69,7 @@ export class definePillars {
 export class Legend {
   public show: boolean = false;
   public fontSize: number = 9;
-  public fontColor: string = "#777777";
+  public fontColor: string = DEFAULT_GREY;
   public fontFamily: string = "\"Segoe UI\", wf_segoe-ui_normal, helvetica, arial, sans-serif";
   public textFavourable: string = "Favourable";
   public textAdverse: string = "Adverse";
@@ -90,7 +90,7 @@ export class margins {
 
 export class xAxisFormatting {
   public fontSize: number = 9;
-  public fontColor: string = "#777777";
+  public fontColor: string = DEFAULT_GREY;
   public fontFamily: string = "\"Segoe UI\", wf_segoe-ui_normal, helvetica, arial, sans-serif";
   public labelWrapText: boolean = true;
   public fitToWidth: boolean = true;
@@ -98,7 +98,7 @@ export class xAxisFormatting {
   public padding: number = 5;
   public showGridLine: boolean = true;
   public gridLineStrokeWidth: number = 5;
-  public gridLineColor: string = "#777777";
+  public gridLineColor: string = DEFAULT_GREY;
 }
 export class yAxisFormatting {
   public show: boolean = true;
@@ -107,19 +107,19 @@ export class yAxisFormatting {
   public YAxisDataPointRangeEnd: number = 0;
   public showYAxisValues: boolean = true;
   public fontSize: number = 9;
-  public fontColor: string = "#777777";
+  public fontColor: string = DEFAULT_GREY;
   public fontFamily: string = "\"Segoe UI\", wf_segoe-ui_normal, helvetica, arial, sans-serif";
   public YAxisValueFormatOption: string = "Auto";
   public showGridLine: boolean = true;
 
   public gridLineStrokeWidth: number = 1;
-  public gridLineColor: string = "#777777";
+  public gridLineColor: string = DEFAULT_GREY;
   public showZeroAxisGridLine: boolean = false;
   public zeroLineStrokeWidth: number = 1;
-  public zeroLineColor: string = "#777777";
+  public zeroLineColor: string = DEFAULT_GREY;
   public joinBars: boolean = false;
   public joinBarsStrokeWidth: number = 1;
-  public joinBarsColor: string = "#777777";
+  public joinBarsColor: string = DEFAULT_GREY;
   public decimalPlaces: number = 0;
 
 }
@@ -127,11 +127,11 @@ export class LabelsFormatting {
   public show: boolean = true;
   public fontSize: number = 9;
   public useDefaultFontColor: boolean = true;
-  public fontColor: string = "#777777";
-  public sentimentFontColorTotal: string = "#777777";
-  public sentimentFontColorFavourable: string = "#777777";
-  public sentimentFontColorAdverse: string = "#777777";
-  public sentimentFontColorOther: string = "#777777";
+  public fontColor: string = DEFAULT_GREY;
+  public sentimentFontColorTotal: string = DEFAULT_GREY;
+  public sentimentFontColorFavourable: string = DEFAULT_GREY;
+  public sentimentFontColorAdverse: string = DEFAULT_GREY;
+  public sentimentFontColorOther: string = DEFAULT_GREY;
   public fontFamily: string = "\"Segoe UI\", wf_segoe-ui_normal, helvetica, arial, sans-serif";
   public valueFormat: string = "Auto";
   public useDefaultLabelPositioning: boolean = true;
@@ -155,6 +155,8 @@ export class LabelsFormatting {
  * ==========================================================================*/
 
 const FONT_FAMILY_DEFAULT = "\"Segoe UI\", wf_segoe-ui_normal, helvetica, arial, sans-serif";
+
+export const DEFAULT_GREY = "#777777";
 
 const LABEL_POSITION_ITEMS: powerbi.IEnumMember[] = [
   { value: "Inside end", displayName: "Inside end" },
@@ -275,7 +277,7 @@ class LegendCard extends formattingSettings.SimpleCard {
   textFavourable = text("textFavourable", "Sentiment - Favourable", "Favourable");
   textAdverse = text("textAdverse", "Sentiment - Adverse", "Adverse");
   font = fontControl("Legend", 9);
-  fontColor = color("fontColor", "Font Color", "#777777");
+  fontColor = color("fontColor", "Font Color", DEFAULT_GREY);
 
   slices = [this.show, this.textFavourable, this.textAdverse, this.font, this.fontColor];
 }
@@ -285,14 +287,14 @@ class XAxisCard extends formattingSettings.SimpleCard {
   displayName = "X-Axis";
 
   font = fontControl("xAxisFormatting", 9);
-  fontColor = color("fontColor", "Font Color", "#777777");
+  fontColor = color("fontColor", "Font Color", DEFAULT_GREY);
   fitToWidth = toggle("fitToWidth", "Fit to width", true);
   labelWrapText = toggle("labelWrapText", "Wrap text", true);
   barWidth = num("barWidth", "Minimum Bar Width", 50, 10, 100);
   padding = num("padding", "Padding", 5, 0, 20);
   showGridLine = toggle("showGridLine", "Show / Hide Gridlines", true);
   gridLineStrokeWidth = num("gridLineStrokeWidth", "Stroke Width", 5, 1, 50);
-  gridLineColor = color("gridLineColor", "Gridlines Color", "#777777");
+  gridLineColor = color("gridLineColor", "Gridlines Color", DEFAULT_GREY);
 
   slices = [this.font, this.fontColor, this.fitToWidth, this.labelWrapText, this.barWidth,
     this.padding, this.showGridLine, this.gridLineStrokeWidth, this.gridLineColor];
@@ -309,18 +311,18 @@ class YAxisCard extends formattingSettings.SimpleCard {
   ]);
   showYAxisValues = toggle("showYAxisValues", "Show / Hide Values", true);
   font = fontControl("yAxisFormatting", 9);
-  fontColor = color("fontColor", "Font Color", "#777777");
+  fontColor = color("fontColor", "Font Color", DEFAULT_GREY);
   YAxisValueFormatOption = dropdown("YAxisValueFormatOption", "Display Units", "Auto", VALUE_FORMAT_ITEMS);
   decimalPlaces = num("decimalPlaces", "Value decimal places", 0, 0, 15);
   showGridLine = toggle("showGridLine", "Show / Hide Gridlines", true);
   gridLineStrokeWidth = num("gridLineStrokeWidth", "Stroke Width", 1, 1, 50);
-  gridLineColor = color("gridLineColor", "Gridlines Color", "#777777");
+  gridLineColor = color("gridLineColor", "Gridlines Color", DEFAULT_GREY);
   showZeroAxisGridLine = toggle("showZeroAxisGridLine", "Show Zero Line", false);
   zeroLineStrokeWidth = num("zeroLineStrokeWidth", "Zero Line Width", 1, 1, 50);
-  zeroLineColor = color("zeroLineColor", "Zero Line Color", "#777777");
+  zeroLineColor = color("zeroLineColor", "Zero Line Color", DEFAULT_GREY);
   joinBars = toggle("joinBars", "Join Bars", false);
   joinBarsStrokeWidth = num("joinBarsStrokeWidth", "Join Bar - Stroke Width", 1, 1, 50);
-  joinBarsColor = color("joinBarsColor", "Join Bar - Color", "#777777");
+  joinBarsColor = color("joinBarsColor", "Join Bar - Color", DEFAULT_GREY);
 
   slices = [this.show, this.YAxisDataPointOption, this.showYAxisValues, this.font, this.fontColor,
     this.YAxisValueFormatOption, this.decimalPlaces, this.showGridLine, this.gridLineStrokeWidth,
@@ -337,11 +339,11 @@ class LabelsCard extends formattingSettings.SimpleCard {
 
   font = fontControl("LabelsFormatting", 9);
   useDefaultFontColor = toggle("useDefaultFontColor", "Use Default Font Color", true);
-  fontColor = color("fontColor", "Default Font Color", "#777777");
-  sentimentFontColorTotal = color("sentimentFontColorTotal", "Total", "#777777");
-  sentimentFontColorFavourable = color("sentimentFontColorFavourable", "Favourable", "#777777");
-  sentimentFontColorAdverse = color("sentimentFontColorAdverse", "Adverse", "#777777");
-  sentimentFontColorOther = color("sentimentFontColorOther", "Other", "#777777");
+  fontColor = color("fontColor", "Default Font Color", DEFAULT_GREY);
+  sentimentFontColorTotal = color("sentimentFontColorTotal", "Total", DEFAULT_GREY);
+  sentimentFontColorFavourable = color("sentimentFontColorFavourable", "Favourable", DEFAULT_GREY);
+  sentimentFontColorAdverse = color("sentimentFontColorAdverse", "Adverse", DEFAULT_GREY);
+  sentimentFontColorOther = color("sentimentFontColorOther", "Other", DEFAULT_GREY);
   useDefaultLabelPositioning = toggle("useDefaultLabelPositioning", "Use Default Label Positioning", true);
   labelPosition = dropdown("labelPosition", "Label Position", "Outside end", LABEL_POSITION_ITEMS);
   labelPositionTotal = dropdown("labelPositionTotal", "Total", "Outside end", LABEL_POSITION_ITEMS);

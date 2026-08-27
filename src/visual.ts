@@ -42,12 +42,12 @@ import ISelectionManager = powerbi.extensibility.ISelectionManager;
 import DataViewMatrixNode = powerbi.DataViewMatrixNode;
 import DataViewMatrix = powerbi.DataViewMatrix;
 import * as d3 from "d3";
-import { valueFormatter } from "powerbi-visuals-utils-formattingutils";
 import { VisualSettings, VisualFormattingSettingsModel, DEFAULT_GREY } from "./settings";
 import { FormattingSettingsService } from "powerbi-visuals-utils-formattingmodel";
 import { Orientation, OrientationName } from "./orientation";
 import { BarChartDataPoint, createBarChartDataPoint } from "./dataPoint";
 import { buildValueTooltip, buildCategoryTooltip, tooltipSelectionId } from "./tooltip";
+import { ValueFormatter, gridlineStrokeWidth, resolveFormat } from "./valueFormatting";
 
 /** Best-effort message extraction from an unknown thrown value. */
 function toErrorMessage(e: unknown): string {
@@ -93,6 +93,7 @@ export class Visual implements IVisual {
     private allowInteractions!: boolean;
     private colorPalette: powerbi.extensibility.ISandboxExtendedColorPalette;
     private isHighContrast: boolean;
+    private formatter!: ValueFormatter;
 
 
 
@@ -157,8 +158,8 @@ export class Visual implements IVisual {
             this.visualSettings,
             this.barChartData,
             dataView,
-            <number>this.gridlineStrokeWidth("x"),
-            <number>this.gridlineStrokeWidth("y"));
+            gridlineStrokeWidth(this.visualSettings, "x"),
+            gridlineStrokeWidth(this.visualSettings, "y"));
         return this.formattingSettingsService.buildFormattingModel(model);
     }
     public update(options: VisualUpdateOptions) {
@@ -171,6 +172,11 @@ export class Visual implements IVisual {
         this.isHighContrast = this.colorPalette.isHighContrast;
         const dataView = this.requireMatrixDataView(options);
         this.visualSettings = Visual.parseSettings(options && options.dataViews && options.dataViews[0]);
+        this.formatter = new ValueFormatter({
+            locale: this.locale,
+            labelValueFormat: this.visualSettings.LabelsFormatting.valueFormat,
+            labelDecimals: this.visualSettings.LabelsFormatting.decimalPlaces,
+        });
         this.chartContainer.selectAll('svg').remove();
         this.addLegend(options);
         this.width = options.viewport.width;
@@ -392,8 +398,6 @@ export class Visual implements IVisual {
         }
     }
 
-    private gridlineStrokeWidth = (axis: "x" | "y"): number =>
-        Math.max(1, (axis === "x" ? this.visualSettings.xAxisFormatting : this.visualSettings.yAxisFormatting).gridLineStrokeWidth);
     private yValue = (d: BarChartDataPoint) => d.value;
     private xValue = (d: BarChartDataPoint) => d.category;
 
@@ -486,7 +490,7 @@ export class Visual implements IVisual {
             this.applyGridlineStyle(yAxis.selectAll('path'), 'black', "0pt");
             if (this.visualSettings.yAxisFormatting.showGridLine) {
 
-                this.applyGridlineStyle(yAxis.selectAll('line'), this.visualSettings.yAxisFormatting.gridLineColor, this.gridlineStrokeWidth("y") / 10 + "pt");
+                this.applyGridlineStyle(yAxis.selectAll('line'), this.visualSettings.yAxisFormatting.gridLineColor, gridlineStrokeWidth(this.visualSettings, "y") / 10 + "pt");
             } else {
                 this.applyGridlineStyle(yAxis.selectAll('line'), this.visualSettings.yAxisFormatting.gridLineColor, "0pt");
             }
@@ -520,7 +524,7 @@ export class Visual implements IVisual {
             this.applyGridlineStyle(yAxis.selectAll('path'), 'black', "0pt");
 
             if (this.visualSettings.yAxisFormatting.showGridLine) {
-                this.applyGridlineStyle(yAxis.selectAll('line'), this.visualSettings.yAxisFormatting.gridLineColor, this.gridlineStrokeWidth("y") / 10 + "pt");
+                this.applyGridlineStyle(yAxis.selectAll('line'), this.visualSettings.yAxisFormatting.gridLineColor, gridlineStrokeWidth(this.visualSettings, "y") / 10 + "pt");
             } else {
                 this.applyGridlineStyle(yAxis.selectAll('line'), this.visualSettings.yAxisFormatting.gridLineColor, "0pt");
             }
@@ -782,7 +786,7 @@ export class Visual implements IVisual {
         });
     };
     private lineWidth(d: any, i: number) {
-        var defaultwidth = this.gridlineStrokeWidth("x") / 10 + "pt";
+        var defaultwidth = gridlineStrokeWidth(this.visualSettings, "x") / 10 + "pt";
         if (d.displayName == "" || i == 0) {
             defaultwidth = "0" + "pt";
         }
@@ -1792,7 +1796,7 @@ export class Visual implements IVisual {
     private createAxisGridlines(myxAxisParent: any, currData: any, allDataIndex: any, levels: any, xScale: any, xAxisrange: any) {
         const o = this.orientation;
         if (this.visualSettings.xAxisFormatting.showGridLine) {
-            this.applyGridlineStyle(myxAxisParent.selectAll('path'), this.visualSettings.xAxisFormatting.gridLineColor, this.gridlineStrokeWidth("x") / o.xGridlineStrokeDivisor + "pt");
+            this.applyGridlineStyle(myxAxisParent.selectAll('path'), this.visualSettings.xAxisFormatting.gridLineColor, gridlineStrokeWidth(this.visualSettings, "x") / o.xGridlineStrokeDivisor + "pt");
             var myAxisTop = myxAxisParent.select("path").node()!.getBoundingClientRect().top;
             const catPos = (d: any, i: number) => allDataIndex == (levels - 1)
                 ? xScale(d.category) - (xScale.padding() * xScale.step()) / 2
@@ -1973,95 +1977,28 @@ export class Visual implements IVisual {
 
         });
     }
-    // Resolve the effective format string for a single matrix value cell.
-    // A DAX dynamic format string is delivered per cell on
-    // `nodeValue.objects.general.formatString`; `valueSources[i].format` is only
-    // the measure's static model format and is empty for a dynamic-format measure.
-    // Requires the `general.formatString` object in capabilities.json and apiVersion >= 4.2.
+    // Thin delegates to ValueFormatter / valueFormatting.ts. Call sites migrate
+    // into waterfallData.ts (converters) and chartRenderer.ts (y-axis ticks) in
+    // later stages, at which point these wrappers go away.
     private resolveFormat(nodeValue: any, staticFormat: string | undefined): string {
-        var dynamic = nodeValue
-            && nodeValue.objects
-            && nodeValue.objects.general
-            && nodeValue.objects.general.formatString;
-        return (typeof dynamic === "string" && dynamic.length > 0) ? dynamic : (staticFormat ?? "");
+        return resolveFormat(nodeValue, staticFormat);
     }
     private formatValueforLabels(d: BarChartDataPoint) {
-        return this.formatValueWithUnits(
-            d.value,
-            d.numberFormat,
-            this.visualSettings.LabelsFormatting.valueFormat,
-            this.visualSettings.LabelsFormatting.decimalPlaces);
+        return this.formatter.label(d);
     }
     private formatValueforvalues(value: any, numberFormat: any) {
-        return this.formatValueWithUnits(
-            value,
-            numberFormat,
-            this.visualSettings.LabelsFormatting.valueFormat,
-            this.visualSettings.LabelsFormatting.decimalPlaces);
+        return this.formatter.value(value, numberFormat);
     }
-    // Shared value formatter for data labels / tooltips.
-    //  - `format` is the effective (dynamic or static) format string for the cell.
-    //  - `precision` (the "Value decimal places" control) is passed on EVERY branch,
-    //    including "None"; the old code omitted it there so decimals never applied.
-    //    It is only forwarded when > 0, so 0 keeps the format string's own decimals
-    //    (backward compatible) and a positive value overrides them.
-    //  - The format string is kept on "Auto" too, so currency / dynamic-format symbols
-    //    survive display-unit scaling. Percentage formats are never abbreviated.
-    private pickDisplayUnit(testValue: number, option: string, isPercent: boolean): number {
-        switch (option) {
-            case "Auto":
-                if (isPercent) {
-                    return 0;
-                } else if (testValue >= 1e9) {
-                    return 1e9;
-                } else if (testValue >= 1e6) {
-                    return 1e6;
-                } else if (testValue >= 1e3) {
-                    return 1e3;
-                }
-                return 0;
-            case "Thousands": return isPercent ? 0 : 1e3;
-            case "Millions": return isPercent ? 0 : 1e6;
-            case "Billions": return isPercent ? 0 : 1e9;
-            default: return 0; // "None"
-        }
-    }
-
-    private createFormatter(format: string | undefined, displayValue: number, precision: number) {
-        return valueFormatter.create({
-            cultureSelector: this.locale,
-            format: format,
-            value: displayValue,
-            precision: precision > 0 ? precision : undefined
+    private formatValueForYAxis(d: any) {
+        return this.formatter.yAxis(d, {
+            min: this.minValue,
+            max: this.maxValue,
+            primaryFormat: (this.barChartData && this.barChartData.length > 0) ? this.barChartData[0].numberFormat : undefined,
+            option: this.visualSettings.yAxisFormatting.YAxisValueFormatOption,
+            decimals: this.visualSettings.yAxisFormatting.decimalPlaces,
         });
     }
-
-    private formatValueWithUnits(value: any, format: string, valueFormat: string, precision: number): string {
-        var isPercent = typeof format === "string" && format.indexOf("%") >= 0;
-        var displayValue = this.pickDisplayUnit(Math.abs(value), valueFormat, isPercent);
-        return this.createFormatter(format, displayValue, precision).format(value);
-    }
-
-    private formatValueForYAxis(d: any) {
-        var decimalPlaces = this.visualSettings.yAxisFormatting.decimalPlaces;
-        var format = (this.barChartData && this.barChartData.length > 0) ? this.barChartData[0].numberFormat : undefined;
-        var isPercent = typeof format === "string" && format.indexOf("%") >= 0;
-        var range = Math.max(Math.abs(this.minValue), Math.abs(this.maxValue));
-        var option = this.visualSettings.yAxisFormatting.YAxisValueFormatOption;
-        var displayValue = this.pickDisplayUnit(range, option, isPercent);
-        return this.createFormatter(format, displayValue, decimalPlaces).format(d);
-    }
     private formatCategory(value: any, type: any, format: any) {
-        let iValueFormatter_XAxis;
-        iValueFormatter_XAxis = valueFormatter.create({ cultureSelector: this.locale, format: format });
-        var formattedValue = value;
-        if (value == null) {
-            formattedValue = "(blank)";
-        }
-        if (type["dateTime"]) {
-            var currDate = new Date(formattedValue);
-            formattedValue = iValueFormatter_XAxis.format(currDate);
-        }
-        return formattedValue;
+        return this.formatter.category(value, type, format);
     }
 }

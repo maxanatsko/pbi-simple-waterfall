@@ -20,6 +20,11 @@
                     "integer": true
                 }
             ]
+        },
+        {
+            "displayName": "Tooltips",
+            "name": "tooltips",
+            "kind": "Measure"
         }
     ],
     "drilldown": {
@@ -185,13 +190,6 @@
         "sentimentColor": {
             "displayName": "Bar Color",
             "properties": {
-                "useSentimentFeatures": {
-                    "displayName": "Use Sentiment Features (hover mouse to see more)",
-                    "description": "Activate to use sentiments to define bar colors, label font colors and label positioning ",
-                    "type": {
-                        "bool": true
-                    }
-                },
                 "sentimentColorTotal": {
                     "displayName": "Total",
                     "description": "The fill color for the Total",
@@ -571,7 +569,7 @@
             "displayName": "Labels",
             "properties": {
                 "show": {
-                    "displayName": "My Property Switch",
+                    "displayName": "Show Labels",
                     "type": { "bool": true }
                 },
                 "fontSize": {
@@ -851,13 +849,6 @@
                                 "value": "Inside bottom"
                             }
                         ]
-                    }
-                },
-                "negativeInBrackets": {
-                    "displayName": "Negative value in brackets",
-                    "description": "Show Negative value in brackets. Only works when you have selected 'Auto' as an option in 'Value Format' above",
-                    "type": {
-                        "bool": true
                     }
                 },
                 "HideZeroBlankValues": {

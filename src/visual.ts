@@ -31,11 +31,8 @@ import VisualUpdateOptions = powerbi.extensibility.visual.VisualUpdateOptions;
 import IVisualEventService = powerbi.extensibility.IVisualEventService;
 import IVisual = powerbi.extensibility.visual.IVisual;
 import ILocalizationManager = powerbi.extensibility.ILocalizationManager;
-import EnumerateVisualObjectInstancesOptions = powerbi.EnumerateVisualObjectInstancesOptions;
-import VisualObjectInstance = powerbi.VisualObjectInstance;
 import IVisualHost = powerbi.extensibility.visual.IVisualHost;
 import DataView = powerbi.DataView;
-import VisualObjectInstanceEnumerationObject = powerbi.VisualObjectInstanceEnumerationObject;
 import { ITooltipServiceWrapper, createTooltipServiceWrapper } from "powerbi-visuals-utils-tooltiputils";
 import ISelectionIdBuilder = powerbi.visuals.ISelectionIdBuilder;
 import ISelectionId = powerbi.visuals.ISelectionId;
@@ -52,8 +49,8 @@ import {
     valueFormatter
 } from "powerbi-visuals-utils-formattingutils";
 import VisualTooltipDataItem = powerbi.extensibility.VisualTooltipDataItem;
-import { VisualSettings, yAxisFormatting, chartOrientation } from "./settings";
-import { IEnumerateObjects, createenumerateObjects } from "./enumerateObjects";
+import { VisualSettings, VisualFormattingSettingsModel } from "./settings";
+import { FormattingSettingsService } from "powerbi-visuals-utils-formattingmodel";
 import { dataRoleHelper } from "powerbi-visuals-utils-dataviewutils";
 import { AxisScale, AxisDomain } from "d3";
 
@@ -83,7 +80,7 @@ export class Visual implements IVisual {
     private chartContainer: d3.Selection<any, any, any, any>;
     private gScrollable: d3.Selection<any, any, any, any>;
     private visualSettings: VisualSettings;
-    private enumerateObjects: IEnumerateObjects;
+    private formattingSettingsService: FormattingSettingsService;
     private adjustmentConstant: number;
     private minValue: number;
     private maxValue: number;
@@ -131,15 +128,25 @@ export class Visual implements IVisual {
         this.selectionManager = options.host.createSelectionManager();
         this.events = options.host.eventService;
         this.locale = options.host.locale;
+        this.formattingSettingsService = new FormattingSettingsService();
 
     }
     private static parseSettings(dataView: DataView): VisualSettings {
         return <VisualSettings>VisualSettings.parse(dataView);
     }
 
-    public enumerateObjectInstances(options: EnumerateVisualObjectInstancesOptions): VisualObjectInstance[] | VisualObjectInstanceEnumerationObject {
-        this.enumerateObjects = createenumerateObjects(this.visualType, this.barChartData, this.barChartDataAll, this.visualSettings, this.defaultXAxisGridlineStrokeWidth(), this.defaultYAxisGridlineStrokeWidth(), this.visualUpdateOptions.dataViews[0]);
-        return this.enumerateObjects.enumerateObjectInstances(options);
+    public getFormattingModel(): powerbi.visuals.FormattingModel {
+        const dataView: DataView = this.visualUpdateOptions && this.visualUpdateOptions.dataViews && this.visualUpdateOptions.dataViews[0];
+        const model: VisualFormattingSettingsModel =
+            this.formattingSettingsService.populateFormattingSettingsModel(VisualFormattingSettingsModel, dataView);
+        model.applyState(
+            this.visualType,
+            this.visualSettings,
+            this.barChartData,
+            dataView,
+            <number>this.defaultXAxisGridlineStrokeWidth(),
+            <number>this.defaultYAxisGridlineStrokeWidth());
+        return this.formattingSettingsService.buildFormattingModel(model);
     }
     public update(options: VisualUpdateOptions) {
         //Certification requirement to use rendering API//

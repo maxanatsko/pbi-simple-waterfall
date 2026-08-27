@@ -131,7 +131,6 @@ export class ChartRenderer {
         }
     }
 
-    private yValue = (d: BarChartDataPoint) => d.value;
     private xValue = (d: BarChartDataPoint) => d.category;
 
     private getMinMaxValue() {

@@ -33,7 +33,6 @@ import IVisual = powerbi.extensibility.visual.IVisual;
 import IVisualHost = powerbi.extensibility.visual.IVisualHost;
 import DataView = powerbi.DataView;
 import { ITooltipServiceWrapper, createTooltipServiceWrapper } from "powerbi-visuals-utils-tooltiputils";
-import ISelectionIdBuilder = powerbi.visuals.ISelectionIdBuilder;
 import ISelectionManager = powerbi.extensibility.ISelectionManager;
 import * as d3 from "d3";
 import { VisualSettings, VisualFormattingSettingsModel } from "./settings";
@@ -61,7 +60,6 @@ export class Visual implements IVisual {
     private barChartData!: BarChartDataPoint[];
     private legendHeight = 0;
     private host: IVisualHost;
-    private selectionIdBuilder: ISelectionIdBuilder;
     private selectionManager: ISelectionManager;
     private tooltipServiceWrapper: ITooltipServiceWrapper;
     private visualType!: string;
@@ -92,7 +90,6 @@ export class Visual implements IVisual {
             .append('div');
 
         this.tooltipServiceWrapper = createTooltipServiceWrapper(options.host.tooltipService, options.element);
-        this.selectionIdBuilder = options.host.createSelectionIdBuilder();
         this.selectionManager = options.host.createSelectionManager();
         this.events = options.host.eventService;
         this.locale = options.host.locale;
@@ -145,7 +142,6 @@ export class Visual implements IVisual {
 
         const builder = new WaterfallDataBuilder({
             options,
-            dataView,
             host: this.host,
             settings: this.visualSettings,
             isHighContrast: this.isHighContrast,

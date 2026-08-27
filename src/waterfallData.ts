@@ -1,8 +1,6 @@
 import powerbi from "powerbi-visuals-api";
 import VisualUpdateOptions = powerbi.extensibility.visual.VisualUpdateOptions;
 import IVisualHost = powerbi.extensibility.visual.IVisualHost;
-import DataView = powerbi.DataView;
-import DataViewMatrix = powerbi.DataViewMatrix;
 import DataViewMatrixNode = powerbi.DataViewMatrixNode;
 import ISelectionId = powerbi.visuals.ISelectionId;
 import { VisualSettings, DEFAULT_GREY } from "./settings";
@@ -11,10 +9,10 @@ import { ValueFormatter, resolveFormat } from "./valueFormatting";
 import { requireMatrixDataView, findLowestLevels } from "./matrix";
 
 /** Everything the data converters read that is not the matrix itself. Built
- *  once per `update()` and handed to WaterfallDataBuilder. */
+ *  once per `update()` and handed to WaterfallDataBuilder. The matrix dataView
+ *  is re-derived from `options` via requireMatrixDataView in each converter. */
 export interface WaterfallDataContext {
     options: VisualUpdateOptions;
-    dataView: DataView & { matrix: DataViewMatrix };
     host: IVisualHost;
     settings: VisualSettings;
     isHighContrast: boolean;
@@ -232,6 +230,7 @@ export class WaterfallDataBuilder {
                     var valueDifference = Measure2Value - Measure1Value;
                     var HideZeroBlankValues: boolean = this.ctx.settings.LabelsFormatting.HideZeroBlankValues;                    
                     if (HideZeroBlankValues && valueDifference == 0) {
+                        // hidden: drop this zero/blank step
                     } else {
                         toolTipDisplayValue1 = dataView.matrix.valueSources[indexMeasures].displayName + allMeasureValues[indexMeasures][nodeItems].category.toString();
                         toolTipDisplayValue2 = dataView.matrix.valueSources[indexMeasures + 1].displayName + allMeasureValues[indexMeasures + 1][nodeItems].category.toString();
@@ -278,7 +277,7 @@ export class WaterfallDataBuilder {
                 var newDisplayName = currCategoryArray[levelItems + 1];
 
                 if (currNode["isPillar"] == 1 || nodeItems == 0) {
-
+                    // pillars and the first node keep the full parent-level label
                 } else {
                     var previousNode = visualData[nodeItems - 1];
                     var previousCategoryText: string = previousNode["category"];
@@ -394,7 +393,6 @@ export class WaterfallDataBuilder {
         });
         var limit = this.ctx.settings.chartOrientation.maxBreakdown;
         var limitcounter = 0;
-        var otherbreakdownstepCount = 0;
         var newOther: any[] = [];
         var otherTotalValue = 0;
         var othersortOrderIndex = 0;
@@ -406,8 +404,7 @@ export class WaterfallDataBuilder {
                 currData[index]["showbreakdownstep"] = true;
                 limitcounter = 0;
                 if (otherTotalValue != 0) {
-                    newOther.push(this.addOtherBreakdownStep(options, otherTotalValue,othersortOrderIndex, othersortOrderIndex, otherbreakdownstepCount));
-                    otherbreakdownstepCount++;
+                    newOther.push(this.addOtherBreakdownStep(options, otherTotalValue, othersortOrderIndex, othersortOrderIndex));
                 }
                 otherTotalValue = 0
                 othersortOrderIndex = 0;
@@ -434,7 +431,6 @@ export class WaterfallDataBuilder {
         });
 
         for (let index = 0; index < currData.length; index++) {
-            const element = currData[index];
             if (currData[index].showbreakdownstep == false) {
                 currData.splice(index, 1);
                 index--;
@@ -455,7 +451,7 @@ export class WaterfallDataBuilder {
 
         return currData;
     }
-    private addOtherBreakdownStep(options: VisualUpdateOptions, value: any, sortOrderIndex: any, sortOrderIndexforLimitBreakdown: any, otherbreakdownstepCount: any) {
+    private addOtherBreakdownStep(options: VisualUpdateOptions, value: any, sortOrderIndex: any, sortOrderIndexforLimitBreakdown: any) {
         //*******************Add "Other" breakdown item *********************
         const dataView = requireMatrixDataView(options);
         //*******************************************************************
@@ -503,7 +499,6 @@ export class WaterfallDataBuilder {
 
         // find all values and aggregate them in an array of array with each child in an array of a measure        
         allMeasureValues = findLowestLevels(dataView, this.ctx.host, this.ctx.formatter);
-        var sortOrderPrecision = Math.pow(10, allMeasureValues.length * allMeasureValues[0].length.toString().length);
 
         // calculate the difference between each measure and add them to an array as the step bars and then add the pillar bars [visualData]
         let indexMeasures = 0;
@@ -519,6 +514,8 @@ export class WaterfallDataBuilder {
             var valueDifference = Measure1Value;
             var HideZeroBlankValues: boolean = this.ctx.settings.LabelsFormatting.HideZeroBlankValues;
             if (HideZeroBlankValues && valueDifference == 0) {
+
+                // hidden: drop this zero/blank step
 
             } else {
 
@@ -549,7 +546,7 @@ export class WaterfallDataBuilder {
                 var newDisplayName = currCategoryArray[levelItems + 1];
 
                 if (currNode["isPillar"] == 1 || nodeItems == 0) {
-
+                    // pillars and the first node keep the full parent-level label
                 } else {
                     var previousNode = visualData[nodeItems - 1];
                     var previousCategoryText: string = previousNode["category"];

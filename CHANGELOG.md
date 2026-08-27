@@ -11,70 +11,29 @@ the authoritative version is in [`pbiviz.json`](pbiviz.json).
 
 ## [3.0.0.0]
 
-### Changed
-- **Renamed to "Multi-Step Waterfall"** with a new, unique visual GUID. This
-  fork cannot update the original author's AppSource listing, so it ships as a
-  separate entry under its own publisher.
-- Modernised the toolchain: `powerbi-visuals-tools` 4 → 7, `powerbi-visuals-api`
-  4.2 → 5.11, TypeScript 3.9 → 5.9, `powerbi-visuals-utils-*` 2.x/4.x → 7.x,
-  d3 5 → 7, ESLint flat config. `npm audit` (production) is now clean; the
-  legacy build stack was the source of 11 critical / 37 high advisories.
-- Rewrote the format pane onto the modern `getFormattingModel` API
-  (`powerbi-visuals-utils-formattingmodel`), replacing the hand-built
-  `enumerateObjectInstances` path. This also fixes the long-standing bug where
-  every per-datapoint format instance was emitted under the object name
-  `"objectName"` instead of its real object.
-- Replaced the vendored d3-v5 `tooltipServiceWrapper` with the official
-  `powerbi-visuals-utils-tooltiputils` package.
+Renamed from **Simple Waterfall** to **Multi-Step Waterfall**. This is a fork of
+the original visual by Nishant Jain, now maintained by Maxim Anatsko and
+published as its own AppSource entry.
 
 ### Added
-- Keyboard navigation of chart bars: Tab to focus, Arrow / Home / End to move,
-  Enter / Space to select (Ctrl / Shift for multi-select), Esc to clear, with a
-  visible focus outline. `supportsKeyboardFocus` is enabled.
-- Windows High Contrast support via `host.colorPalette` — bars, labels and
-  selection use foreground / background / foregroundSelected colours.
-- A `vitest` smoke suite for the formatting model, run in CI.
+- **Keyboard navigation.** Tab to the chart, move between bars with the arrow
+  keys (and Home / End), press Enter or Space to select, Ctrl / Shift to add to
+  the selection, and Esc to clear. The focused bar shows a visible outline.
+- **High-contrast mode support.** Bars, labels and selection follow the Windows
+  high-contrast theme colours.
+
+### Changed
+- Rebuilt the format pane on Power BI's current formatting API and refreshed the
+  underlying build to the latest Power BI visuals API (5.11). Every existing
+  option is unchanged — sentiment and per-bar colours, per-bar pillar toggles
+  and conditional formatting all behave as before.
 
 ### Removed
-- The unused `LabelsFormatting.negativeInBrackets` setting (declared but never
-  read). Stored values for it are simply ignored.
-- The duplicate `sentimentColor.useSentimentFeatures` capability property.
+- The **"Negative value in brackets"** label option, which had no effect.
 
 ### Fixed
-- The `LabelsFormatting` show toggle is labelled "Show Labels" (was the
-  placeholder "My Property Switch").
-- The `tooltips` data role referenced by `capabilities.json` is now declared.
-
-### Known limitations
-- TypeScript `strict` mode is still off for `src/visual.ts`.
-- `pbiviz package` is run with `--all-locales` to work around an incompatibility
-  between the current `powerbi-visuals-webpack-plugin` localisation loader and
-  the ESM `powerbiGlobalizeLocales.js` in `powerbi-visuals-utils-formattingutils`
-  7. This bundles all locale strings rather than only `en-US`.
-- `webpack` is pinned to `5.105.4` via `overrides`, and `npm run package` goes
-  through `scripts/package.mjs`. `powerbi-visuals-tools` 7.2.x with webpack 5.10x
-  intermittently crashes in a post-build logging hook
-  (`No such label 'emitAssets'`) *after* the `.pbiviz` is written and the build
-  reports success — a webpack `needAdditionalPass` timer race. The wrapper treats
-  a completed build with a fresh `dist/*.pbiviz` as success and still fails on
-  any real build error.
-
-## Earlier maintainership changes (pre-3.0.0.0)
-
-- Maintainership moved to Maxim Anatsko (fork of the original by Nishant Jain).
-  Updated `author` in `package.json` / `pbiviz.json`, `supportUrl`, and the
-  `LICENSE` copyright notice (the original 2019 notice is retained).
-- Repository cleanup: removed committed build artifacts (`Beta Version/`,
-  `webpack.statistics.*.html`), Visual Studio local state (`.vs/`), and leftover
-  debug files from version control; rewrote `.gitignore`.
-- Renamed `Version History.md` to `CHANGELOG.md` and `Private Policy` to
-  `PRIVACY.md`; added `CONTRIBUTING.md`.
-- Migrated linting from TSLint (end-of-life) to ESLint with
-  `eslint-plugin-powerbi-visuals`.
-- Added `.editorconfig`, a GitHub Actions build workflow, and standard
-  `package.json` metadata.
-- Renamed `assets/icon-visual.png` to `assets/icon.png` and pointed
-  `pbiviz.json` at it.
+- The labels on/off switch is now labelled **"Show Labels"** (previously an
+  unnamed placeholder).
 
 ## [2.0.7] – [2.0.10.4]
 

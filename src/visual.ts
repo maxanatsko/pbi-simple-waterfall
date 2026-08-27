@@ -891,22 +891,7 @@ export class Visual implements IVisual {
             <ISelectionId[]>this.selectionManager.getSelectionIds()
         );
         if (this.visualType == "drillable" || this.visualType == "staticCategory" || this.visualType == "drillableCategory") {
-            this.bars.on('click', (event: MouseEvent, d: any) => {
-                // Allow selection only if the visual is rendered in a view that supports interactivity (e.g. Report)
-
-                if (this.allowInteractions) {
-                    const isCtrlPressed: boolean = event.ctrlKey;
-                    if (this.selectionManager.hasSelection() && !isCtrlPressed) {
-                        this.bars.attr('fill-opacity', 1);
-                    }
-                    this.selectionManager
-                        .select(d.selectionId, isCtrlPressed)
-                        .then((ids: ISelectionIdBase[]) => {
-                            this.syncSelectionState(this.bars, ids);
-                        });
-                    event.stopPropagation();
-                }
-            });
+            this.wireDataPointSelection(this.bars);
         }
 
         this.tooltipServiceWrapper.addTooltip(g.selectAll('rect'),
@@ -917,6 +902,23 @@ export class Visual implements IVisual {
 
 
 
+    }
+    private wireDataPointSelection = (selection: d3.Selection<any, any, any, any>) => {
+        selection.on('click', (event: MouseEvent, d: any) => {
+            // Allow selection only if the visual is rendered in a view that supports interactivity (e.g. Report)
+            if (this.allowInteractions) {
+                const isCtrlPressed: boolean = event.ctrlKey;
+                if (this.selectionManager.hasSelection() && !isCtrlPressed) {
+                    this.bars.attr('fill-opacity', 1);
+                }
+                this.selectionManager
+                    .select(d.selectionId, isCtrlPressed)
+                    .then((ids: ISelectionIdBase[]) => {
+                        this.syncSelectionState(this.bars, ids);
+                    });
+                event.stopPropagation();
+            }
+        });
     }
     private applyBarAccessibility = (bars: d3.Selection<any, any, any, any>) => {
         if (!bars) {
@@ -1948,21 +1950,7 @@ export class Visual implements IVisual {
         }
         var xAxislabels = myxAxisParent.selectAll(".tick text").data(currData).text((d: any) => d.displayName);
         if (this.visualType == "drillable" || this.visualType == "staticCategory" || this.visualType == "drillableCategory") {
-            xAxislabels.on('click', (event: MouseEvent, d: any) => {
-                // Allow selection only if the visual is rendered in a view that supports interactivity (e.g. Report)
-                if (this.allowInteractions) {
-                    const isCtrlPressed: boolean = event.ctrlKey;
-                    if (this.selectionManager.hasSelection() && !isCtrlPressed) {
-                        this.bars.attr('fill-opacity', 1);
-                    }
-                    this.selectionManager
-                        .select(d.selectionId, isCtrlPressed)
-                        .then((ids: ISelectionIdBase[]) => {
-                            this.syncSelectionState(this.bars, ids);
-                        });
-                    event.stopPropagation();
-                }
-            });
+            this.wireDataPointSelection(xAxislabels);
         }
         //tooltip for x-axis labels
         this.tooltipServiceWrapper.addTooltip(
@@ -2384,22 +2372,7 @@ export class Visual implements IVisual {
             <ISelectionId[]>this.selectionManager.getSelectionIds()
         );
         if (this.visualType == "drillable" || this.visualType == "staticCategory" || this.visualType == "drillableCategory") {
-            this.bars.on('click', (event: MouseEvent, d: any) => {
-                // Allow selection only if the visual is rendered in a view that supports interactivity (e.g. Report)
-
-                if (this.allowInteractions) {
-                    const isCtrlPressed: boolean = event.ctrlKey;
-                    if (this.selectionManager.hasSelection() && !isCtrlPressed) {
-                        this.bars.attr('fill-opacity', 1);
-                    }
-                    this.selectionManager
-                        .select(d.selectionId, isCtrlPressed)
-                        .then((ids: ISelectionIdBase[]) => {
-                            this.syncSelectionState(this.bars, ids);
-                        });
-                    event.stopPropagation();
-                }
-            });
+            this.wireDataPointSelection(this.bars);
         }
 
         this.tooltipServiceWrapper.addTooltip(g.selectAll('rect'),
@@ -2802,21 +2775,7 @@ export class Visual implements IVisual {
 
         var xAxislabels = myxAxisParent.selectAll(".tick text").data(currData).text((d: any) => d.displayName);
         if (this.visualType == "drillable" || this.visualType == "staticCategory" || this.visualType == "drillableCategory") {
-            xAxislabels.on('click', (event: MouseEvent, d: any) => {
-                // Allow selection only if the visual is rendered in a view that supports interactivity (e.g. Report)
-                if (this.allowInteractions) {
-                    const isCtrlPressed: boolean = event.ctrlKey;
-                    if (this.selectionManager.hasSelection() && !isCtrlPressed) {
-                        this.bars.attr('fill-opacity', 1);
-                    }
-                    this.selectionManager
-                        .select(d.selectionId, isCtrlPressed)
-                        .then((ids: ISelectionIdBase[]) => {
-                            this.syncSelectionState(this.bars, ids);
-                        });
-                    event.stopPropagation();
-                }
-            });
+            this.wireDataPointSelection(xAxislabels);
         }
         //tooltip for x-axis labels
         this.tooltipServiceWrapper.addTooltip(

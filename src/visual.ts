@@ -35,9 +35,6 @@ import DataView = powerbi.DataView;
 import { ITooltipServiceWrapper, createTooltipServiceWrapper } from "powerbi-visuals-utils-tooltiputils";
 import ISelectionIdBuilder = powerbi.visuals.ISelectionIdBuilder;
 import ISelectionId = powerbi.visuals.ISelectionId;
-// The selection-manager APIs traffic in the narrower `extensibility.ISelectionId`;
-// only the visuals variant carries `.includes()` / `.equals()` etc.
-import ISelectionIdBase = powerbi.extensibility.ISelectionId;
 import ISelectionManager = powerbi.extensibility.ISelectionManager;
 import * as d3 from "d3";
 import { VisualSettings, VisualFormattingSettingsModel } from "./settings";
@@ -48,6 +45,7 @@ import { buildValueTooltip, buildCategoryTooltip, tooltipSelectionId } from "./t
 import { ValueFormatter, gridlineStrokeWidth } from "./valueFormatting";
 import { requireMatrixDataView, getMatrixLevelsAt } from "./matrix";
 import { WaterfallDataBuilder } from "./waterfallData";
+import { BarInteractions } from "./interactions";
 
 /** Best-effort message extraction from an unknown thrown value. */
 function toErrorMessage(e: unknown): string {
@@ -90,10 +88,10 @@ export class Visual implements IVisual {
     private orientationName!: OrientationName;
     private events: IVisualEventService;
     private locale: string;
-    private allowInteractions!: boolean;
     private colorPalette: powerbi.extensibility.ISandboxExtendedColorPalette;
     private isHighContrast: boolean;
     private formatter!: ValueFormatter;
+    private interactions: BarInteractions;
 
 
 
@@ -122,15 +120,11 @@ export class Visual implements IVisual {
         this.formattingSettingsService = new FormattingSettingsService();
         this.colorPalette = options.host.colorPalette;
         this.isHighContrast = this.colorPalette.isHighContrast;
+        this.interactions = new BarInteractions({
+            selectionManager: this.selectionManager,
+            colorPalette: this.colorPalette,
+        });
 
-    }
-    /** Foreground colour to use when Windows High Contrast mode is active. */
-    private get hcForeground(): string {
-        return this.colorPalette.foreground.value;
-    }
-    /** Background colour to use when Windows High Contrast mode is active. */
-    private get hcBackground(): string {
-        return this.colorPalette.background.value;
     }
     private static parseSettings(dataView: DataView): VisualSettings {
         return <VisualSettings>VisualSettings.parse(dataView);
@@ -303,7 +297,7 @@ export class Visual implements IVisual {
 
     }
     private createWaterfallGraph(options: any, allData: any) {
-        this.allowInteractions = true;
+        this.interactions.configure({ allowInteractions: true, isHighContrast: this.isHighContrast });
         this.orientationName = this.visualSettings.chartOrientation.orientation == "Horizontal" ? "Horizontal" : "Vertical";
         this.createWaterfallGraphCore(options, allData);
     }
@@ -315,17 +309,7 @@ export class Visual implements IVisual {
             .append('svg');
         this.svg = this.chartContainer
             .append('svg');
-        this.svg.on('contextmenu', (event: MouseEvent) => {
-
-            const mouseEvent: MouseEvent = event;
-            const eventTarget: EventTarget | null = mouseEvent.target;
-            let dataPoint: any = d3.select(<d3.BaseType>eventTarget).datum();
-            this.selectionManager.showContextMenu(dataPoint ? dataPoint.selectionId : {}, {
-                x: mouseEvent.clientX,
-                y: mouseEvent.clientY
-            });
-            mouseEvent.preventDefault();
-        });
+        this.interactions.wireContextMenu(this.svg);
         this.chartContainer.attr("width", this.width);
         this.chartContainer.attr("height", this.height);
         this.svg.attr("height", this.height);
@@ -588,12 +572,12 @@ export class Visual implements IVisual {
             .attr(o.mainSizeAttr, xScale.bandwidth())
             .attr(o.crossSizeAttr, (d: any, i: number) => o.barCrossSize(d, i, this.barChartData))
             .attr('fill', (d: any) => d.customBarColor);
-        this.applyBarAccessibility(this.bars);
+        this.interactions.applyAccessibility(this.bars);
         if (this.isHighContrast) {
             // Override any per-bar / conditional fill copied straight into
             // customBarColor by the data converters, so every path follows the
             // high-contrast palette.
-            this.bars.attr('fill', this.hcBackground).attr('stroke', this.hcForeground).attr('stroke-width', 2);
+            this.bars.attr('fill', this.colorPalette.background.value).attr('stroke', this.colorPalette.foreground.value).attr('stroke-width', 2);
         }
 
         //line joinning the bars
@@ -619,27 +603,15 @@ export class Visual implements IVisual {
         }
 
         // Clear selection when clicking outside a bar
-        this.svg.on('click', () => {
-            if (this.allowInteractions) {
-                this.selectionManager
-                    .clear()
-                    .then(() => {
-                        this.selectionManager.registerOnSelectCallback(
-                            (ids: ISelectionIdBase[]) => {
-                                this.syncSelectionState(this.bars, ids);
-                            });
-                    });
-            }
-            this.bars.attr('fill-opacity', 1);
-        });
+        this.interactions.wireRootClear(this.svg, () => this.bars);
 
         //reset selections when the visual is re-drawn
-        this.syncSelectionState(
+        this.interactions.syncSelectionState(
             this.bars,
             <ISelectionId[]>this.selectionManager.getSelectionIds()
         );
         if (this.visualType == "drillable" || this.visualType == "staticCategory" || this.visualType == "drillableCategory") {
-            this.wireDataPointSelection(this.bars);
+            this.interactions.wireClick(this.bars, () => this.bars);
         }
 
         this.tooltipServiceWrapper.addTooltip(g.selectAll('rect'),
@@ -649,126 +621,6 @@ export class Visual implements IVisual {
         g.attr('transform', o.scrollableTransform(this.findRightHorizontal, this.margin.top));
 
     }
-    private wireDataPointSelection = (selection: d3.Selection<any, any, any, any>) => {
-        selection.on('click', (event: MouseEvent, d: any) => {
-            // Allow selection only if the visual is rendered in a view that supports interactivity (e.g. Report)
-            if (this.allowInteractions) {
-                const isCtrlPressed: boolean = event.ctrlKey;
-                if (this.selectionManager.hasSelection() && !isCtrlPressed) {
-                    this.bars.attr('fill-opacity', 1);
-                }
-                this.selectionManager
-                    .select(d.selectionId, isCtrlPressed)
-                    .then((ids: ISelectionIdBase[]) => {
-                        this.syncSelectionState(this.bars, ids);
-                    });
-                event.stopPropagation();
-            }
-        });
-    }
-    private applyBarAccessibility = (bars: d3.Selection<any, any, any, any>) => {
-        if (!bars) {
-            return;
-        }
-        const self = this;
-        // Roving tab index: the whole bar series is one Tab stop. Only the
-        // "current" bar is tabbable; Arrow / Home / End move focus and the 0
-        // index with it.
-        bars
-            .attr('tabindex', (d: any, i: number) => (i === 0 ? 0 : -1))
-            .attr('role', 'option')
-            .attr('aria-label', (d: any) => {
-                const name = d.category === "defaultBreakdownStepOther" ? (d.displayName || "Other") : d.category;
-                const value = (d.toolTipValue1Formatted != null && d.toolTipValue1Formatted !== "")
-                    ? d.toolTipValue1Formatted
-                    : d.value;
-                return `${name}: ${value}`;
-            })
-            .on('keydown', function (event: KeyboardEvent, d: any) {
-                const nodes = bars.nodes();
-                const i = nodes.indexOf(this);
-                const focusAt = (target: number) => {
-                    const clamped = Math.max(0, Math.min(target, nodes.length - 1));
-                    const el = nodes[clamped] as SVGElement;
-                    if (!el) {
-                        return;
-                    }
-                    nodes.forEach((n, k) => (n as SVGElement).setAttribute('tabindex', k === clamped ? '0' : '-1'));
-                    el.focus();
-                };
-                switch (event.key) {
-                    case 'Enter':
-                    case ' ':
-                    case 'Spacebar':
-                        event.preventDefault();
-                        if (!self.allowInteractions) {
-                            return;
-                        }
-                        self.selectionManager
-                            .select(d.selectionId, event.ctrlKey || event.metaKey || event.shiftKey)
-                            .then((ids: ISelectionIdBase[]) => self.syncSelectionState(self.bars, ids));
-                        break;
-                    case 'ArrowRight':
-                    case 'ArrowDown':
-                        event.preventDefault();
-                        focusAt(i + 1);
-                        break;
-                    case 'ArrowLeft':
-                    case 'ArrowUp':
-                        event.preventDefault();
-                        focusAt(i - 1);
-                        break;
-                    case 'Home':
-                        event.preventDefault();
-                        focusAt(0);
-                        break;
-                    case 'End':
-                        event.preventDefault();
-                        focusAt(nodes.length - 1);
-                        break;
-                    case 'Escape':
-                        if (self.allowInteractions) {
-                            self.selectionManager.clear().then(() => self.syncSelectionState(self.bars, []));
-                        }
-                        break;
-                    default:
-                        break;
-                }
-            });
-    }
-    private syncSelectionState = (bars: any, selectionIds: ISelectionIdBase[]) => {
-        if (!bars) {
-            return;
-        }
-        if (!selectionIds.length) {
-            bars.attr("fill-opacity", null);
-            if (this.isHighContrast) {
-                bars.attr('stroke', this.hcForeground).attr('stroke-width', 2);
-            }
-            return;
-        }
-        bars.each((d: any, i: number, nodes: any) => {
-            const isSelected: boolean = this.isSelectionIdInArray(selectionIds, d.selectionId);
-            d3.select(nodes[i]).attr('fill-opacity', isSelected
-                ? 1
-                : 0.5
-            );
-            if (this.isHighContrast) {
-                d3.select(nodes[i])
-                    .attr('stroke', isSelected ? this.colorPalette.foregroundSelected.value : this.hcForeground)
-                    .attr('stroke-width', isSelected ? 3 : 1);
-            }
-        });
-    }
-    private isSelectionIdInArray(selectionIds: ISelectionIdBase[], selectionId: ISelectionIdBase): boolean {
-
-        if (!selectionIds || !selectionId) {
-            return false;
-        }
-        return selectionIds.some((currentSelectionId) => {
-            return (currentSelectionId as ISelectionId).includes(selectionId as ISelectionId);
-        });
-    };
     private lineWidth(d: any, i: number) {
         var defaultwidth = gridlineStrokeWidth(this.visualSettings, "x") / 10 + "pt";
         if (d.displayName == "" || i == 0) {
@@ -1035,7 +887,7 @@ export class Visual implements IVisual {
         this.applyGridlineStyle(myxAxisParent.selectAll('path'), this.visualSettings.yAxisFormatting.gridLineColor);
         var xAxislabels = myxAxisParent.selectAll(".tick text").data(currData).text((d: any) => d.displayName);
         if (this.visualType == "drillable" || this.visualType == "staticCategory" || this.visualType == "drillableCategory") {
-            this.wireDataPointSelection(xAxislabels);
+            this.interactions.wireClick(xAxislabels, () => this.bars);
         }
         this.tooltipServiceWrapper.addTooltip(myxAxisParent.selectAll(".tick text"),
             (dataPoint: any) => buildCategoryTooltip(dataPoint),

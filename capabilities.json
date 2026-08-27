@@ -20,11 +20,6 @@
                     "integer": true
                 }
             ]
-        },
-        {
-            "displayName": "Tooltips",
-            "name": "tooltips",
-            "kind": "Measure"
         }
     ],
     "drilldown": {
@@ -41,10 +36,7 @@
         "supportedTypes": {
             "default": true,
             "canvas": true
-        },
-        "roles": [
-            "tooltips"
-        ]
+        }
     },
     "dataViewMappings": [{
 

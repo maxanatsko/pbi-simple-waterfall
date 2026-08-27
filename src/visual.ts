@@ -856,7 +856,10 @@ export class Visual implements IVisual {
             .attr('fill', d => d.customBarColor);
         this.applyBarAccessibility(this.bars);
         if (this.isHighContrast) {
-            this.bars.attr('stroke', this.hcForeground).attr('stroke-width', 2);
+            // Override any per-bar / conditional fill copied straight into
+            // customBarColor by the data converters, so every path follows the
+            // high-contrast palette.
+            this.bars.attr('fill', this.hcBackground).attr('stroke', this.hcForeground).attr('stroke-width', 2);
         }
 
 
@@ -947,8 +950,13 @@ export class Visual implements IVisual {
         bars
             .attr('tabindex', 0)
             .attr('role', 'option')
-            .attr('aria-label', (d: any) =>
-                `${d.category}: ${d.originalFormattedValue || d.formattedValue || d.value}`)
+            .attr('aria-label', (d: any) => {
+                const name = d.category === "defaultBreakdownStepOther" ? (d.displayName || "Other") : d.category;
+                const value = (d.toolTipValue1Formatted != null && d.toolTipValue1Formatted !== "")
+                    ? d.toolTipValue1Formatted
+                    : d.value;
+                return `${name}: ${value}`;
+            })
             .on('keydown', function (event: KeyboardEvent, d: any) {
                 const nodes = bars.nodes();
                 const i = nodes.indexOf(this);
@@ -2409,7 +2417,10 @@ export class Visual implements IVisual {
             .attr('fill', d => d.customBarColor);
         this.applyBarAccessibility(this.bars);
         if (this.isHighContrast) {
-            this.bars.attr('stroke', this.hcForeground).attr('stroke-width', 2);
+            // Override any per-bar / conditional fill copied straight into
+            // customBarColor by the data converters, so every path follows the
+            // high-contrast palette.
+            this.bars.attr('fill', this.hcBackground).attr('stroke', this.hcForeground).attr('stroke-width', 2);
         }
 
         //line joinning the bars

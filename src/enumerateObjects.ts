@@ -30,7 +30,7 @@ export interface IEnumerateObjects {
         options: EnumerateVisualObjectInstancesOptions): VisualObjectInstance[] | VisualObjectInstanceEnumerationObject;
 }
 export function createenumerateObjects(
-    visualType: String,
+    visualType: string,
     barChartData: barChartDataPoint[],
     barChartDataAll,
     visualSettings: VisualSettings,
@@ -48,7 +48,7 @@ export function createenumerateObjects(
         dataView);
 }
 class enumerateObjects implements IEnumerateObjects {
-    private visualType: String;
+    private visualType: string;
     private barChartData: barChartDataPoint[];
     private barChartDataAll;
     private visualSettings: VisualSettings;
@@ -56,7 +56,7 @@ class enumerateObjects implements IEnumerateObjects {
     private defaultYAxisGridlineStrokeWidth: PrimitiveValue;
     private dataView: DataView;
 
-    constructor(visualType: String, barchartData: barChartDataPoint[], barchartDataAll, visualSettings: VisualSettings, defaultXAxisGridlineStrokeWidth: PrimitiveValue, defaultYAxisGridlineStrokeWidth: PrimitiveValue, dataView: DataView) {
+    constructor(visualType: string, barchartData: barChartDataPoint[], barchartDataAll, visualSettings: VisualSettings, defaultXAxisGridlineStrokeWidth: PrimitiveValue, defaultYAxisGridlineStrokeWidth: PrimitiveValue, dataView: DataView) {
         this.visualType = visualType;
         this.barChartData = barchartData;
         this.barChartDataAll = barchartDataAll;

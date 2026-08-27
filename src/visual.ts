@@ -24,9 +24,6 @@
 *  THE SOFTWARE.
 */
 "use strict";
-//import "@babel/polyfill";
-import "core-js/stable";
-import "regenerator-runtime/runtime";
 import "./../style/visual.less";
 import powerbi from "powerbi-visuals-api";
 import VisualConstructorOptions = powerbi.extensibility.visual.VisualConstructorOptions;
@@ -39,7 +36,7 @@ import VisualObjectInstance = powerbi.VisualObjectInstance;
 import IVisualHost = powerbi.extensibility.visual.IVisualHost;
 import DataView = powerbi.DataView;
 import VisualObjectInstanceEnumerationObject = powerbi.VisualObjectInstanceEnumerationObject;
-import { ITooltipServiceWrapper, createTooltipServiceWrapper, TooltipEventArgs } from "./tooltipServiceWrapper";
+import { ITooltipServiceWrapper, createTooltipServiceWrapper } from "powerbi-visuals-utils-tooltiputils";
 import ISelectionIdBuilder = powerbi.visuals.ISelectionIdBuilder;
 import ISelectionId = powerbi.visuals.ISelectionId;
 import ISelectionManager = powerbi.extensibility.ISelectionManager;
@@ -323,9 +320,9 @@ export class Visual implements IVisual {
             .append('svg');
         this.svg = this.chartContainer
             .append('svg');
-        this.svg.on('contextmenu', () => {
+        this.svg.on('contextmenu', (event: MouseEvent) => {
 
-            const mouseEvent: MouseEvent = <MouseEvent>d3.event;
+            const mouseEvent: MouseEvent = event;
             const eventTarget: EventTarget = mouseEvent.target;
             let dataPoint: any = d3.select(<d3.BaseType>eventTarget).datum();
             this.selectionManager.showContextMenu(dataPoint ? dataPoint.selectionId : {}, {
@@ -411,22 +408,22 @@ export class Visual implements IVisual {
                     .attr('ry', 4);
 
                 var scrollBarDragBar = d3.drag()
-                    .on("start", () => {
-                        dragStartPosition = d3.event.x;
+                    .on("start", (event) => {
+                        dragStartPosition = event.x;
                         dragScrollBarXStartposition = parseInt(scrollbar.attr('x'));
 
                     })
-                    .on("drag", () => {
-                        var scrollBarMovement = d3.event.x - dragStartPosition;
+                    .on("drag", (event) => {
+                        var scrollBarMovement = event.x - dragStartPosition;
                         //do not move the scroll bar beyond the x axis or after the end of the scroll bar
                         if (dragScrollBarXStartposition + scrollBarMovement >= 0 && (dragScrollBarXStartposition + scrollBarMovement + scrollbarwidth <= this.width)) {
                             scrollbar.attr('x', dragScrollBarXStartposition + scrollBarMovement);
                             this.gScrollable.attr('transform', `translate(${(dragScrollBarXStartposition + scrollBarMovement) / (this.width - scrollbarwidth) * (this.innerWidth - this.width) * -1},${0})`);
                         }
                     });
-                var scrollBarVerticalWheel = d3.zoom().on("zoom", () => {
+                var scrollBarVerticalWheel = d3.zoom().on("zoom", (event) => {
                     var zoomScrollContainerheight = parseInt(scrollbarContainer.attr('width'));
-                    var deltaY = d3.event.sourceEvent.deltaY;
+                    var deltaY = event.sourceEvent.deltaY;
 
 
                     var zoomScrollBarMovement = deltaY / 100 * zoomScrollContainerheight / this.barChartData.length;
@@ -814,8 +811,8 @@ export class Visual implements IVisual {
         g.selectAll(".labels")
             .call(this.labelFitToWidth);
         this.tooltipServiceWrapper.addTooltip(g.selectAll('.labels'),
-            (tooltipEvent: TooltipEventArgs<number>) => this.getTooltipData(tooltipEvent.data),
-            (tooltipEvent: TooltipEventArgs<number>) => null);
+            (dataPoint: any) => this.getTooltipData(dataPoint),
+            () => null);
 
         g.selectAll(".labels")
             .call(this.labelAlignment, xScale.bandwidth());
@@ -870,7 +867,7 @@ export class Visual implements IVisual {
         }
         
         // Clear selection when clicking outside a bar
-        this.svg.on('click', (d) => {
+        this.svg.on('click', () => {
             if (this.allowInteractions) {
                 this.selectionManager
                     .clear()
@@ -890,11 +887,11 @@ export class Visual implements IVisual {
             <ISelectionId[]>this.selectionManager.getSelectionIds()
         );
         if (this.visualType == "drillable" || this.visualType == "staticCategory" || this.visualType == "drillableCategory") {
-            this.bars.on('click', (d) => {
+            this.bars.on('click', (event: MouseEvent, d: any) => {
                 // Allow selection only if the visual is rendered in a view that supports interactivity (e.g. Report)
 
                 if (this.allowInteractions) {
-                    const isCtrlPressed: boolean = (<MouseEvent>d3.event).ctrlKey;
+                    const isCtrlPressed: boolean = event.ctrlKey;
                     if (this.selectionManager.hasSelection() && !isCtrlPressed) {
                         this.bars.attr('fill-opacity', 1);
                     }
@@ -903,14 +900,14 @@ export class Visual implements IVisual {
                         .then((ids: ISelectionId[]) => {
                             this.syncSelectionState(this.bars, ids);
                         });
-                    (<Event>d3.event).stopPropagation();
+                    event.stopPropagation();
                 }
             });
         }
 
         this.tooltipServiceWrapper.addTooltip(g.selectAll('rect'),
-            (tooltipEvent: TooltipEventArgs<number>) => this.getTooltipData(tooltipEvent.data),
-            (tooltipEvent: TooltipEventArgs<number>) => this.getTooltipSelectionID(tooltipEvent.data));
+            (dataPoint: any) => this.getTooltipData(dataPoint),
+            (dataPoint: any) => this.getTooltipSelectionID(dataPoint));
 
         g.attr('transform', `translate(${0},${this.margin.top})`);
 
@@ -1935,10 +1932,10 @@ export class Visual implements IVisual {
         }
         var xAxislabels = myxAxisParent.selectAll(".tick text").data(currData).text(d => d.displayName);
         if (this.visualType == "drillable" || this.visualType == "staticCategory" || this.visualType == "drillableCategory") {
-            xAxislabels.on('click', (d) => {
-                // Allow selection only if the visual is rendered in a view that supports interactivity (e.g. Report)                
+            xAxislabels.on('click', (event: MouseEvent, d: any) => {
+                // Allow selection only if the visual is rendered in a view that supports interactivity (e.g. Report)
                 if (this.allowInteractions) {
-                    const isCtrlPressed: boolean = (<MouseEvent>d3.event).ctrlKey;
+                    const isCtrlPressed: boolean = event.ctrlKey;
                     if (this.selectionManager.hasSelection() && !isCtrlPressed) {
                         this.bars.attr('fill-opacity', 1);
                     }
@@ -1947,15 +1944,15 @@ export class Visual implements IVisual {
                         .then((ids: ISelectionId[]) => {
                             this.syncSelectionState(this.bars, ids);
                         });
-                    (<Event>d3.event).stopPropagation();
+                    event.stopPropagation();
                 }
             });
         }
         //tooltip for x-axis labels
         this.tooltipServiceWrapper.addTooltip(
             myxAxisParent.selectAll(".tick text"),
-            (tooltipEvent: TooltipEventArgs<number>) => this.getTooltipXaxis(tooltipEvent.data),
-            (tooltipEvent: TooltipEventArgs<number>) => null
+            (dataPoint: any) => this.getTooltipXaxis(dataPoint),
+            () => null
         );
 
 
@@ -2042,7 +2039,6 @@ export class Visual implements IVisual {
         var data2 = [];
         var totalValue = 0;
         var orderIndex = 0;
-        var d3formatnegative = d3.format("(.3s");
         //*******************************************************************
         //This will always be zero as it should only have 1 measure
         var measureIndex = 0;
@@ -2241,9 +2237,9 @@ export class Visual implements IVisual {
             .append('svg');
         this.svgYAxis = this.chartContainer
             .append('svg');
-        this.svg.on('contextmenu', () => {
+        this.svg.on('contextmenu', (event: MouseEvent) => {
 
-            const mouseEvent: MouseEvent = <MouseEvent>d3.event;
+            const mouseEvent: MouseEvent = event;
             const eventTarget: EventTarget = mouseEvent.target;
             let dataPoint: any = d3.select(<d3.BaseType>eventTarget).datum();
             this.selectionManager.showContextMenu(dataPoint ? dataPoint.selectionId : {}, {
@@ -2344,7 +2340,7 @@ export class Visual implements IVisual {
             });
         }
         // Clear selection when clicking outside a bar
-        this.svg.on('click', (d) => {
+        this.svg.on('click', () => {
             if (this.allowInteractions) {
                 this.selectionManager
                     .clear()
@@ -2364,11 +2360,11 @@ export class Visual implements IVisual {
             <ISelectionId[]>this.selectionManager.getSelectionIds()
         );
         if (this.visualType == "drillable" || this.visualType == "staticCategory" || this.visualType == "drillableCategory") {
-            this.bars.on('click', (d) => {
+            this.bars.on('click', (event: MouseEvent, d: any) => {
                 // Allow selection only if the visual is rendered in a view that supports interactivity (e.g. Report)
 
                 if (this.allowInteractions) {
-                    const isCtrlPressed: boolean = (<MouseEvent>d3.event).ctrlKey;
+                    const isCtrlPressed: boolean = event.ctrlKey;
                     if (this.selectionManager.hasSelection() && !isCtrlPressed) {
                         this.bars.attr('fill-opacity', 1);
                     }
@@ -2377,14 +2373,14 @@ export class Visual implements IVisual {
                         .then((ids: ISelectionId[]) => {
                             this.syncSelectionState(this.bars, ids);
                         });
-                    (<Event>d3.event).stopPropagation();
+                    event.stopPropagation();
                 }
             });
         }
 
         this.tooltipServiceWrapper.addTooltip(g.selectAll('rect'),
-            (tooltipEvent: TooltipEventArgs<number>) => this.getTooltipData(tooltipEvent.data),
-            (tooltipEvent: TooltipEventArgs<number>) => this.getTooltipSelectionID(tooltipEvent.data));
+            (dataPoint: any) => this.getTooltipData(dataPoint),
+            (dataPoint: any) => this.getTooltipSelectionID(dataPoint));
 
 
         g.attr('transform', `translate(${-this.findRightHorizontal},${0})`);
@@ -2549,8 +2545,8 @@ export class Visual implements IVisual {
         g.selectAll(".labels")
             .call(this.labelFitToWidthHorizontal, this.width + this.findRightHorizontal - this.scrollbarBreath);
         this.tooltipServiceWrapper.addTooltip(g.selectAll('.labels'),
-            (tooltipEvent: TooltipEventArgs<number>) => this.getTooltipData(tooltipEvent.data),
-            (tooltipEvent: TooltipEventArgs<number>) => null);
+            (dataPoint: any) => this.getTooltipData(dataPoint),
+            () => null);
 
 
 
@@ -2666,13 +2662,13 @@ export class Visual implements IVisual {
                 .attr('ry', 4);
 
             var scrollBarHorizontalDragBar = d3.drag()
-                .on("start", () => {
-                    dragStartPosition = d3.event.y;
+                .on("start", (event) => {
+                    dragStartPosition = event.y;
                     dragScrollBarXStartposition = parseInt(scrollbar.attr('y'));
 
                 })
-                .on("drag", () => {
-                    var scrollBarMovement = d3.event.y - dragStartPosition;
+                .on("drag", (event) => {
+                    var scrollBarMovement = event.y - dragStartPosition;
 
                     //do not move the scroll bar beyond the x axis or after the end of the scroll bar
                     if (dragScrollBarXStartposition + scrollBarMovement >= 0 && (dragScrollBarXStartposition + scrollBarMovement + scrollbarHeight <= (this.height - this.margin.top - this.margin.bottom - this.yAxisHeightHorizontal))) {
@@ -2681,10 +2677,10 @@ export class Visual implements IVisual {
                     }
                 });
 
-            var scrollBarHorizontalWheel = d3.zoom().on("zoom", () => {
+            var scrollBarHorizontalWheel = d3.zoom().on("zoom", (event) => {
 
                 var zoomScrollContainerheight = parseInt(scrollbarContainer.attr('height'));
-                var zoomScrollBarMovement = d3.event.sourceEvent.deltaY / 100 * zoomScrollContainerheight / this.barChartData.length;
+                var zoomScrollBarMovement = event.sourceEvent.deltaY / 100 * zoomScrollContainerheight / this.barChartData.length;
                 var zoomScrollBarXStartposition = parseInt(scrollbar.attr('y'));
                 var zoomScrollBarheight = parseInt(scrollbar.attr('height'));
 
@@ -2814,10 +2810,10 @@ export class Visual implements IVisual {
 
         var xAxislabels = myxAxisParent.selectAll(".tick text").data(currData).text(d => d.displayName);
         if (this.visualType == "drillable" || this.visualType == "staticCategory" || this.visualType == "drillableCategory") {
-            xAxislabels.on('click', (d) => {
-                // Allow selection only if the visual is rendered in a view that supports interactivity (e.g. Report)                
+            xAxislabels.on('click', (event: MouseEvent, d: any) => {
+                // Allow selection only if the visual is rendered in a view that supports interactivity (e.g. Report)
                 if (this.allowInteractions) {
-                    const isCtrlPressed: boolean = (<MouseEvent>d3.event).ctrlKey;
+                    const isCtrlPressed: boolean = event.ctrlKey;
                     if (this.selectionManager.hasSelection() && !isCtrlPressed) {
                         this.bars.attr('fill-opacity', 1);
                     }
@@ -2826,15 +2822,15 @@ export class Visual implements IVisual {
                         .then((ids: ISelectionId[]) => {
                             this.syncSelectionState(this.bars, ids);
                         });
-                    (<Event>d3.event).stopPropagation();
+                    event.stopPropagation();
                 }
             });
         }
         //tooltip for x-axis labels
         this.tooltipServiceWrapper.addTooltip(
             myxAxisParent.selectAll(".tick text"),
-            (tooltipEvent: TooltipEventArgs<number>) => this.getTooltipXaxis(tooltipEvent.data),
-            (tooltipEvent: TooltipEventArgs<number>) => null
+            (dataPoint: any) => this.getTooltipXaxis(dataPoint),
+            () => null
         );
 
 

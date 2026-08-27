@@ -947,8 +947,11 @@ export class Visual implements IVisual {
             return;
         }
         const self = this;
+        // Roving tab index: the whole bar series is one Tab stop. Only the
+        // "current" bar is tabbable; Arrow / Home / End move focus and the 0
+        // index with it.
         bars
-            .attr('tabindex', 0)
+            .attr('tabindex', (d: any, i: number) => (i === 0 ? 0 : -1))
             .attr('role', 'option')
             .attr('aria-label', (d: any) => {
                 const name = d.category === "defaultBreakdownStepOther" ? (d.displayName || "Other") : d.category;
@@ -961,10 +964,13 @@ export class Visual implements IVisual {
                 const nodes = bars.nodes();
                 const i = nodes.indexOf(this);
                 const focusAt = (target: number) => {
-                    const el = nodes[Math.max(0, Math.min(target, nodes.length - 1))] as SVGElement;
-                    if (el) {
-                        el.focus();
+                    const clamped = Math.max(0, Math.min(target, nodes.length - 1));
+                    const el = nodes[clamped] as SVGElement;
+                    if (!el) {
+                        return;
                     }
+                    nodes.forEach((n, k) => (n as SVGElement).setAttribute('tabindex', k === clamped ? '0' : '-1'));
+                    el.focus();
                 };
                 switch (event.key) {
                     case 'Enter':

@@ -2,11 +2,10 @@
     width: 100%;
     height: 100%;
 
-    svg {
-        overflow: visible;
-    }
-
-    // Keyboard focus indicator for bars (rect elements carry tabindex="0").
+    // Keyboard focus indicator for bars. The chart SVGs intentionally keep the
+    // default `overflow: hidden` so the scroll viewport still clips off-screen
+    // bars when "Fit to width" is off; a focus ring on an edge bar may be
+    // clipped on that side, which is an acceptable trade-off.
     rect:focus-visible {
         outline: 2px solid #000;
         outline-offset: 1px;

@@ -19,7 +19,7 @@ cd pbi-simple-waterfall
 npm install
 
 # One-time: install the local dev certificate
-npm run pbiviz -- --install-cert
+npx pbiviz install-cert
 
 # Start the dev server (run twice the first time if the cert step just ran)
 npm start

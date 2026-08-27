@@ -46,7 +46,7 @@ Requires Node.js 20.19+.
 
 ```bash
 npm install
-npm run pbiviz -- --install-cert   # one-time dev certificate
+npx pbiviz install-cert            # one-time dev certificate (for npm start)
 npm start                          # dev server
 npm run lint                       # ESLint
 npm test                           # vitest smoke suite

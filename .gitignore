@@ -1,12 +1,27 @@
-# Don't track content of these folders
+# Dependencies
 node_modules/
+
+# Build output
 dist/
-assets/Other
 .tmp/
-gitIgnore Files/
-Beta Version/
-sample/
-README.md
-LICENSE
-Private Policy
-Version History.md
+*.pbiviz
+
+# Bundle analyzer
+webpack.statistics*.html
+
+# Power BI visuals tooling
+.api/
+
+# IDE / editor
+.vs/
+*.suo
+*.user
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*

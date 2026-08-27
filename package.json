@@ -1,5 +1,20 @@
 {
-    "name": "visual",
+    "name": "pbi-simple-waterfall",
+    "version": "2.0.10.4",
+    "description": "Simple Waterfall - a Power BI custom visual for multi-step waterfall charts.",
+    "license": "MIT",
+    "author": "Maxim Anatsko <max@maxanatsko.com>",
+    "contributors": [
+        "Nishant Jain <nishant@datanomy.uk> (original author)"
+    ],
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/maxanatsko/pbi-simple-waterfall.git"
+    },
+    "bugs": {
+        "url": "https://github.com/maxanatsko/pbi-simple-waterfall/issues"
+    },
+    "homepage": "https://github.com/maxanatsko/pbi-simple-waterfall#readme",
     "scripts": {
         "pbiviz": "pbiviz",
         "start": "pbiviz start",

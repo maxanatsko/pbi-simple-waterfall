@@ -35,6 +35,9 @@
         "powerbi-visuals-utils-tooltiputils": "^7.0.0",
         "powerbi-visuals-utils-typeutils": "^7.0.0"
     },
+    "overrides": {
+        "webpack": "5.105.4"
+    },
     "devDependencies": {
         "@types/d3": "^7.4.3",
         "@types/node": "^22.10.0",

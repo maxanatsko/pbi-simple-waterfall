@@ -1,7 +1,7 @@
 # Changelog
 
-All notable changes to the Simple Waterfall Power BI visual are documented in
-this file.
+All notable changes to the Multi-Step Waterfall Power BI visual (formerly
+"Simple Waterfall") are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Power BI custom visuals use a four-part `major.minor.patch.build` version scheme;
@@ -9,7 +9,53 @@ the authoritative version is in [`pbiviz.json`](pbiviz.json).
 
 ## [Unreleased]
 
+## [3.0.0.0]
+
 ### Changed
+- **Renamed to "Multi-Step Waterfall"** with a new, unique visual GUID. This
+  fork cannot update the original author's AppSource listing, so it ships as a
+  separate entry under its own publisher.
+- Modernised the toolchain: `powerbi-visuals-tools` 4 → 7, `powerbi-visuals-api`
+  4.2 → 5.11, TypeScript 3.9 → 5.9, `powerbi-visuals-utils-*` 2.x/4.x → 7.x,
+  d3 5 → 7, ESLint flat config. `npm audit` (production) is now clean; the
+  legacy build stack was the source of 11 critical / 37 high advisories.
+- Rewrote the format pane onto the modern `getFormattingModel` API
+  (`powerbi-visuals-utils-formattingmodel`), replacing the hand-built
+  `enumerateObjectInstances` path. This also fixes the long-standing bug where
+  every per-datapoint format instance was emitted under the object name
+  `"objectName"` instead of its real object.
+- Replaced the vendored d3-v5 `tooltipServiceWrapper` with the official
+  `powerbi-visuals-utils-tooltiputils` package.
+
+### Added
+- Keyboard navigation of chart bars: Tab to focus, Arrow / Home / End to move,
+  Enter / Space to select (Ctrl / Shift for multi-select), Esc to clear, with a
+  visible focus outline. `supportsKeyboardFocus` is enabled.
+- Windows High Contrast support via `host.colorPalette` — bars, labels and
+  selection use foreground / background / foregroundSelected colours.
+- A `vitest` smoke suite for the formatting model, run in CI.
+
+### Removed
+- The unused `LabelsFormatting.negativeInBrackets` setting (declared but never
+  read). Stored values for it are simply ignored.
+- The duplicate `sentimentColor.useSentimentFeatures` capability property.
+
+### Fixed
+- The `LabelsFormatting` show toggle is labelled "Show Labels" (was the
+  placeholder "My Property Switch").
+- The `tooltips` data role referenced by `capabilities.json` is now declared.
+
+### Known limitations
+- TypeScript `strict` mode is still off for `src/visual.ts`.
+- `pbiviz package` is run with `--all-locales` to work around an incompatibility
+  between the current `powerbi-visuals-webpack-plugin` localisation loader and
+  the ESM `powerbiGlobalizeLocales.js` in `powerbi-visuals-utils-formattingutils`
+  7. This bundles all locale strings rather than only `en-US`.
+- `webpack` is pinned to `5.105.4` via `overrides`. Later 5.10x releases crash
+  `pbiviz package` in a post-build logging hook (`No such label 'emitAssets'`).
+
+## Earlier maintainership changes (pre-3.0.0.0)
+
 - Maintainership moved to Maxim Anatsko (fork of the original by Nishant Jain).
   Updated `author` in `package.json` / `pbiviz.json`, `supportUrl`, and the
   `LICENSE` copyright notice (the original 2019 notice is retained).
@@ -24,11 +70,6 @@ the authoritative version is in [`pbiviz.json`](pbiviz.json).
   `package.json` metadata.
 - Renamed `assets/icon-visual.png` to `assets/icon.png` and pointed
   `pbiviz.json` at it.
-
-### Known limitations
-- `supportsKeyboardFocus` is not enabled — keyboard navigation of chart elements
-  is not yet implemented.
-- TypeScript `strict` mode is off for `src/visual.ts`.
 
 ## [2.0.7] – [2.0.10.4]
 

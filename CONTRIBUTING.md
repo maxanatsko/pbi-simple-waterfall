@@ -11,7 +11,7 @@ version (see [`pbiviz.json`](pbiviz.json)), Power BI environment
 
 ## Development setup
 
-Requires Node.js 18+ and the Power BI visuals tools.
+Requires Node.js 20.19+ and the Power BI visuals tools.
 
 ```bash
 git clone https://github.com/maxanatsko/pbi-simple-waterfall.git

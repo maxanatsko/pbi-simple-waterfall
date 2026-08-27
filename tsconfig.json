@@ -8,15 +8,9 @@
         "moduleResolution": "node",
         "sourceMap": true,
         "skipLibCheck": true,
+        "strict": true,
         "noImplicitReturns": true,
         "noFallthroughCasesInSwitch": true,
-        "noImplicitThis": true,
-        "strictFunctionTypes": true,
-        "strictBindCallApply": true,
-        "alwaysStrict": true,
-        "useUnknownInCatchVariables": true,
-        "strictNullChecks": true,
-        "strictPropertyInitialization": true,
         "lib": [
             "es2022",
             "dom"

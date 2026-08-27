@@ -17,8 +17,10 @@ export default tseslint.config(
     {
         files: ["src/**/*.ts", "test/**/*.ts"],
         rules: {
-            // The renderer is one large legacy file; these are downgraded to keep
-            // `npm run lint` green while the strict-mode migration is deferred.
+            // The renderer is one large legacy file. TS `strict` mode is now on
+            // (see tsconfig.json / CONTRIBUTING.md), but it still leans on `any`
+            // for d3 callback data and internal dictionaries, so these stay
+            // relaxed to keep `npm run lint` green.
             "@typescript-eslint/no-explicit-any": "off",
             "@typescript-eslint/no-inferrable-types": "off",
             "@typescript-eslint/no-unused-vars": "warn",

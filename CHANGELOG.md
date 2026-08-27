@@ -9,6 +9,15 @@ the authoritative version is in [`pbiviz.json`](pbiviz.json).
 
 ## [Unreleased]
 
+### Changed
+
+- TypeScript `strict` mode is now enabled. All resulting type errors in
+  `src/visual.ts` were addressed (null-safety around `dataView.matrix`, d3
+  `.node()` results, uninitialised class fields, and implicit `any`). No
+  intended change to rendering behaviour.
+- Added an `npm run typecheck` script and a matching CI step; test sources are
+  now type-checked via `tsconfig.test.json`.
+
 ## [3.0.0.0]
 
 Renamed from **Simple Waterfall** to **Multi-Step Waterfall**. This is a fork of

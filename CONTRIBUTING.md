@@ -68,8 +68,11 @@ append this to the report URL before importing:
   `powerbi-visuals-webpack-plugin` localisation loader cannot parse the ESM
   `powerbiGlobalizeLocales.js` shipped by `powerbi-visuals-utils-formattingutils`
   7. This bundles all locale strings rather than only `en-US`.
-- TypeScript `strict` mode is off for `src/visual.ts` — a strict-mode migration
-  is deferred to a follow-up.
+- TypeScript `strict` mode is **on**. `npm run typecheck` (`tsc --noEmit` for
+  both `tsconfig.json` and `tsconfig.test.json`) runs in CI before
+  `npm run package`. The legacy renderer in `src/visual.ts` still uses `any`
+  liberally for d3 callback data and the internal `data2` dictionaries, so the
+  `@typescript-eslint/no-explicit-any` lint rule stays disabled for now.
 
 ## Useful references
 

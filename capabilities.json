@@ -36,6 +36,7 @@
         "default": {}
     },
     "supportsMultiVisualSelection": true,
+    "supportsKeyboardFocus": true,
     "tooltips": {
         "supportedTypes": {
             "default": true,

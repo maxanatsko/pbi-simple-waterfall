@@ -109,13 +109,16 @@ export class Visual implements IVisual {
     private events: IVisualEventService;
     private locale: string;
     private allowInteractions: boolean;
+    private colorPalette: powerbi.extensibility.ISandboxExtendedColorPalette;
+    private isHighContrast: boolean;
 
 
 
     constructor(options: VisualConstructorOptions) {
         this.host = options.host;
         this.mainContainer = d3.select<HTMLElement, any>(options.element)
-            .append('div');
+            .append('div')
+            .classed('simpleWaterfall', true);
         this.legendContainer = this.mainContainer
             .append('div');
         this.chartContainer = this.mainContainer
@@ -129,7 +132,17 @@ export class Visual implements IVisual {
         this.events = options.host.eventService;
         this.locale = options.host.locale;
         this.formattingSettingsService = new FormattingSettingsService();
+        this.colorPalette = options.host.colorPalette;
+        this.isHighContrast = this.colorPalette.isHighContrast;
 
+    }
+    /** Foreground colour to use when Windows High Contrast mode is active. */
+    private get hcForeground(): string {
+        return this.colorPalette.foreground.value;
+    }
+    /** Background colour to use when Windows High Contrast mode is active. */
+    private get hcBackground(): string {
+        return this.colorPalette.background.value;
     }
     private static parseSettings(dataView: DataView): VisualSettings {
         return <VisualSettings>VisualSettings.parse(dataView);
@@ -155,6 +168,7 @@ export class Visual implements IVisual {
         //-------------------------------------------------------------------------
         try {
         this.visualUpdateOptions = options;
+        this.isHighContrast = this.colorPalette.isHighContrast;
         var dataView: DataView = options.dataViews[0];
         this.visualSettings = Visual.parseSettings(options && options.dataViews && options.dataViews[0]);
         this.chartContainer.selectAll('svg').remove();
@@ -840,6 +854,10 @@ export class Visual implements IVisual {
             .attr('width', xScale.bandwidth())
             .attr('height', (d, i) => this.getHeight(d, i))
             .attr('fill', d => d.customBarColor);
+        this.applyBarAccessibility(this.bars);
+        if (this.isHighContrast) {
+            this.bars.attr('stroke', this.hcForeground).attr('stroke-width', 2);
+        }
 
 
         //line joinning the bars
@@ -921,9 +939,74 @@ export class Visual implements IVisual {
 
 
     }
+    private applyBarAccessibility = (bars: d3.Selection<any, any, any, any>) => {
+        if (!bars) {
+            return;
+        }
+        const self = this;
+        bars
+            .attr('tabindex', 0)
+            .attr('role', 'option')
+            .attr('aria-label', (d: any) =>
+                `${d.category}: ${d.originalFormattedValue || d.formattedValue || d.value}`)
+            .on('keydown', function (event: KeyboardEvent, d: any) {
+                const nodes = bars.nodes();
+                const i = nodes.indexOf(this);
+                const focusAt = (target: number) => {
+                    const el = nodes[Math.max(0, Math.min(target, nodes.length - 1))] as SVGElement;
+                    if (el) {
+                        el.focus();
+                    }
+                };
+                switch (event.key) {
+                    case 'Enter':
+                    case ' ':
+                    case 'Spacebar':
+                        event.preventDefault();
+                        if (!self.allowInteractions) {
+                            return;
+                        }
+                        self.selectionManager
+                            .select(d.selectionId, event.ctrlKey || event.metaKey || event.shiftKey)
+                            .then((ids: ISelectionId[]) => self.syncSelectionState(self.bars, ids));
+                        break;
+                    case 'ArrowRight':
+                    case 'ArrowDown':
+                        event.preventDefault();
+                        focusAt(i + 1);
+                        break;
+                    case 'ArrowLeft':
+                    case 'ArrowUp':
+                        event.preventDefault();
+                        focusAt(i - 1);
+                        break;
+                    case 'Home':
+                        event.preventDefault();
+                        focusAt(0);
+                        break;
+                    case 'End':
+                        event.preventDefault();
+                        focusAt(nodes.length - 1);
+                        break;
+                    case 'Escape':
+                        if (self.allowInteractions) {
+                            self.selectionManager.clear().then(() => self.syncSelectionState(self.bars, []));
+                        }
+                        break;
+                    default:
+                        break;
+                }
+            });
+    }
     private syncSelectionState = (bars, selectionIds: ISelectionId[]) => {
+        if (!bars) {
+            return;
+        }
         if (!selectionIds.length) {
             bars.attr("fill-opacity", null);
+            if (this.isHighContrast) {
+                bars.attr('stroke', this.hcForeground).attr('stroke-width', 2);
+            }
             return;
         }
         bars.each((d, i, nodes) => {
@@ -932,6 +1015,11 @@ export class Visual implements IVisual {
                 ? 1
                 : 0.5
             );
+            if (this.isHighContrast) {
+                d3.select(nodes[i])
+                    .attr('stroke', isSelected ? this.colorPalette.foregroundSelected.value : this.hcForeground)
+                    .attr('stroke-width', isSelected ? 3 : 1);
+            }
         });
     }
     private isSelectionIdInArray(selectionIds: ISelectionId[], selectionId: ISelectionId): boolean {
@@ -1108,6 +1196,9 @@ export class Visual implements IVisual {
     }
     private getfillColor(isPillar: number, value: number) {
         var barColor: string = "#777777";
+        if (this.isHighContrast) {
+            return this.hcBackground;
+        }
         if (isPillar == 1) {
             barColor = this.visualSettings.sentimentColor.sentimentColorTotal;
         } else {
@@ -1121,6 +1212,9 @@ export class Visual implements IVisual {
 
     }
     private getLabelFontColor(isPillar: number, value: number) {
+        if (this.isHighContrast) {
+            return this.hcForeground;
+        }
         if (this.visualSettings.LabelsFormatting.useDefaultFontColor) {
             return this.visualSettings.LabelsFormatting.fontColor;
         } else {
@@ -2313,6 +2407,10 @@ export class Visual implements IVisual {
             .attr('width', (d, i) => this.getWidthHorizontal(d, i))
             .attr('height', xScale.bandwidth())
             .attr('fill', d => d.customBarColor);
+        this.applyBarAccessibility(this.bars);
+        if (this.isHighContrast) {
+            this.bars.attr('stroke', this.hcForeground).attr('stroke-width', 2);
+        }
 
         //line joinning the bars
         if (this.visualSettings.yAxisFormatting.joinBars) {

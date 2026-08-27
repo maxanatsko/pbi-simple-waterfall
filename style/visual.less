@@ -1,9 +1,23 @@
-p {
-    font-size: 20px;
-    font-weight: bold;
-    em {
-        background: yellow;
-        padding: 5px;
-        
+.simpleWaterfall {
+    width: 100%;
+    height: 100%;
+
+    svg {
+        overflow: visible;
+    }
+
+    // Keyboard focus indicator for bars (rect elements carry tabindex="0").
+    rect:focus-visible {
+        outline: 2px solid #000;
+        outline-offset: 1px;
+    }
+    rect:focus:not(:focus-visible) {
+        outline: none;
+    }
+
+    @media (forced-colors: active) {
+        rect:focus-visible {
+            outline-color: Highlight;
+        }
     }
 }

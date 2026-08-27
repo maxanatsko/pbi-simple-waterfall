@@ -47,56 +47,13 @@ import VisualTooltipDataItem = powerbi.extensibility.VisualTooltipDataItem;
 import { VisualSettings, VisualFormattingSettingsModel, DEFAULT_GREY } from "./settings";
 import { FormattingSettingsService } from "powerbi-visuals-utils-formattingmodel";
 import { Orientation, OrientationName } from "./orientation";
+import { BarChartDataPoint, createBarChartDataPoint } from "./dataPoint";
 
 /** Best-effort message extraction from an unknown thrown value. */
 function toErrorMessage(e: unknown): string {
     return e instanceof Error ? e.message : String(e);
 }
 
-export interface BarChartDataPoint {
-    value: number;
-    numberFormat: string;
-    isPillar: number;
-    category: string;
-    displayName: string;
-    selectionId: ISelectionId | null;
-    childrenCount: number;
-    sortOrderIndex: number;
-    sortOrderIndexforLimitBreakdown: number;
-    customBarColor: string;
-    customFontColor: string;
-    customLabelPositioning: string;
-    toolTipValue1Formatted: string;
-    toolTipDisplayValue1: string;
-    toolTipValue2Formatted?: string;
-    toolTipDisplayValue2?: string | null;
-    Measure1Value?: number | null;
-    Measure2Value?: number | null;
-    showbreakdownstep?: boolean;
-    orderIndex?: number;
-    xAxisFormat?: string;
-    type?: any;
-}
-
-/** Build a BarChartDataPoint with safe defaults; converters override per-point fields. */
-function createBarChartDataPoint(): BarChartDataPoint {
-    return {
-        value: 0,
-        numberFormat: "",
-        isPillar: 0,
-        category: "",
-        displayName: "",
-        selectionId: null,
-        childrenCount: 0,
-        sortOrderIndex: 0,
-        sortOrderIndexforLimitBreakdown: 0,
-        customBarColor: "",
-        customFontColor: "",
-        customLabelPositioning: "",
-        toolTipValue1Formatted: "",
-        toolTipDisplayValue1: "",
-    };
-}
 export class Visual implements IVisual {
 
     private svg!: d3.Selection<any, any, any, any>;

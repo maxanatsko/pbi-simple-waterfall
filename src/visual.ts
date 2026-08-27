@@ -30,29 +30,28 @@ import VisualConstructorOptions = powerbi.extensibility.visual.VisualConstructor
 import VisualUpdateOptions = powerbi.extensibility.visual.VisualUpdateOptions;
 import IVisualEventService = powerbi.extensibility.IVisualEventService;
 import IVisual = powerbi.extensibility.visual.IVisual;
-import ILocalizationManager = powerbi.extensibility.ILocalizationManager;
 import IVisualHost = powerbi.extensibility.visual.IVisualHost;
 import DataView = powerbi.DataView;
 import { ITooltipServiceWrapper, createTooltipServiceWrapper } from "powerbi-visuals-utils-tooltiputils";
 import ISelectionIdBuilder = powerbi.visuals.ISelectionIdBuilder;
 import ISelectionId = powerbi.visuals.ISelectionId;
+// The selection-manager APIs traffic in the narrower `extensibility.ISelectionId`;
+// only the visuals variant carries `.includes()` / `.equals()` etc.
+import ISelectionIdBase = powerbi.extensibility.ISelectionId;
 import ISelectionManager = powerbi.extensibility.ISelectionManager;
-import DataViewHierarchyLevel = powerbi.DataViewHierarchyLevel;
 import DataViewMatrixNode = powerbi.DataViewMatrixNode;
-import DataViewCategoryColumn = powerbi.DataViewCategoryColumn;
-import DataViewObject = powerbi.DataViewObject;
+import DataViewMatrix = powerbi.DataViewMatrix;
 import PrimitiveValue = powerbi.PrimitiveValue;
 import * as d3 from "d3";
-import {
-    valueFormatter as vf,
-    textMeasurementService as tms,
-    valueFormatter
-} from "powerbi-visuals-utils-formattingutils";
+import { valueFormatter } from "powerbi-visuals-utils-formattingutils";
 import VisualTooltipDataItem = powerbi.extensibility.VisualTooltipDataItem;
 import { VisualSettings, VisualFormattingSettingsModel } from "./settings";
 import { FormattingSettingsService } from "powerbi-visuals-utils-formattingmodel";
-import { dataRoleHelper } from "powerbi-visuals-utils-dataviewutils";
-import { AxisScale, AxisDomain } from "d3";
+
+/** Best-effort message extraction from an unknown thrown value. */
+function toErrorMessage(e: unknown): string {
+    return e instanceof Error ? e.message : String(e);
+}
 
 interface BarChartDataPoint {
     value: PrimitiveValue;
@@ -73,48 +72,53 @@ interface BarChartDataPoint {
 }
 export class Visual implements IVisual {
 
-    private svg: d3.Selection<any, any, any, any>;
-    private svgYAxis: d3.Selection<any, any, any, any>;
+    private svg!: d3.Selection<any, any, any, any>;
+    private svgYAxis!: d3.Selection<any, any, any, any>;
     private mainContainer: d3.Selection<any, any, any, any>;
     private legendContainer: d3.Selection<any, any, any, any>;
     private chartContainer: d3.Selection<any, any, any, any>;
-    private gScrollable: d3.Selection<any, any, any, any>;
-    private visualSettings: VisualSettings;
+    private gScrollable!: d3.Selection<any, any, any, any>;
+    private visualSettings!: VisualSettings;
     private formattingSettingsService: FormattingSettingsService;
     private adjustmentConstant: number;
-    private minValue: number;
-    private maxValue: number;
-    private originalwidth: number;
-    private originalheight: number;
-    private width: number;
-    private height: number;
-    private innerWidth: number;
-    private innerHeight: number;
-    private barChartData: BarChartDataPoint[];
-    private barChartDataAll = [];
-    private margin;
-    private legendHeight;
+    private minValue!: number;
+    private maxValue!: number;
+    private originalwidth!: number;
+    private originalheight!: number;
+    private width!: number;
+    private height!: number;
+    private innerWidth!: number;
+    private innerHeight!: number;
+    private barChartData!: BarChartDataPoint[];
+    private barChartDataAll: any[] = [];
+    private margin!: { top: number; right: number; bottom: number; left: number };
+    private legendHeight = 0;
     private host: IVisualHost;
     private selectionIdBuilder: ISelectionIdBuilder;
     private selectionManager: ISelectionManager;
     private tooltipServiceWrapper: ITooltipServiceWrapper;
-    private visualType: string;
-    private visualUpdateOptions: VisualUpdateOptions;
-    private bars: d3.Selection<d3.BaseType, any, d3.BaseType, any>;
+    private visualType!: string;
+    private visualUpdateOptions!: VisualUpdateOptions;
+    private bars!: d3.Selection<d3.BaseType, any, d3.BaseType, any>;
     private xAxisPosition = 0;
     private yAxisWidth = 0;
     private yAxisHeightHorizontal = 0;
     private scrollbarBreath = 0;
-    private yScaleTickValues = [];
+    private yScaleTickValues: number[] = [];
     private events: IVisualEventService;
     private locale: string;
-    private allowInteractions: boolean;
+    private allowInteractions!: boolean;
     private colorPalette: powerbi.extensibility.ISandboxExtendedColorPalette;
     private isHighContrast: boolean;
 
 
 
-    constructor(options: VisualConstructorOptions) {
+    constructor(options?: VisualConstructorOptions) {
+        // The pbiviz-generated plugin shim calls `new Visual(options?)`; the real
+        // Power BI host always supplies them.
+        if (!options) {
+            throw new Error("Multi-Step Waterfall: VisualConstructorOptions are required.");
+        }
         this.host = options.host;
         this.mainContainer = d3.select<HTMLElement, any>(options.element)
             .append('div')
@@ -148,6 +152,19 @@ export class Visual implements IVisual {
         return <VisualSettings>VisualSettings.parse(dataView);
     }
 
+    /**
+     * Returns the first dataView with its `matrix` proven non-null. Every data
+     * converter needs the matrix; `update()` runs inside a try/catch that reports
+     * `renderingFailed`, so throwing here is the intended "no data" path.
+     */
+    private requireMatrixDataView(options: VisualUpdateOptions): DataView & { matrix: DataViewMatrix } {
+        const dataView = options && options.dataViews && options.dataViews[0];
+        if (!dataView || !dataView.matrix) {
+            throw new Error("Multi-Step Waterfall: a matrix dataView is required.");
+        }
+        return dataView as DataView & { matrix: DataViewMatrix };
+    }
+
     public getFormattingModel(): powerbi.visuals.FormattingModel {
         const dataView: DataView = this.visualUpdateOptions && this.visualUpdateOptions.dataViews && this.visualUpdateOptions.dataViews[0];
         const model: VisualFormattingSettingsModel =
@@ -169,7 +186,7 @@ export class Visual implements IVisual {
         try {
         this.visualUpdateOptions = options;
         this.isHighContrast = this.colorPalette.isHighContrast;
-        var dataView: DataView = options.dataViews[0];
+        const dataView = this.requireMatrixDataView(options);
         this.visualSettings = Visual.parseSettings(options && options.dataViews && options.dataViews[0]);
         this.chartContainer.selectAll('svg').remove();
         this.addLegend(options);
@@ -183,7 +200,7 @@ export class Visual implements IVisual {
             this.visualType = "static";
             this.barChartData = this.getDataStaticWaterfall(options);
 
-            var allData = [];
+            var allData: any[] = [];
             allData.push(this.barChartData);
 
         } else if (dataView.matrix.rows.levels.length == 1 && dataView.matrix.valueSources.length == 1) {
@@ -196,7 +213,7 @@ export class Visual implements IVisual {
             }*/
             this.barChartData = this.getDataStaticCategoryWaterfall(options);
 
-            var allData = [];
+            var allData: any[] = [];
             allData.push(this.barChartData);
 
 
@@ -229,8 +246,8 @@ export class Visual implements IVisual {
         //-------------------------------------------------------------------------
         this.events.renderingFinished(options);
         //-------------------------------------------------------------------------
-        } catch (e) {
-            this.events.renderingFailed(options, e && e.message ? e.message : String(e));
+        } catch (e: unknown) {
+            this.events.renderingFailed(options, toErrorMessage(e));
         }
     }
     private addLegend(options: VisualUpdateOptions) {
@@ -260,7 +277,7 @@ export class Visual implements IVisual {
             var textBoxSize;
             var textBoxSizeHeight;
             var textBoxSizeWidth;
-            textBoxSize = textFavourable.node().getBoundingClientRect();
+            textBoxSize = textFavourable.node()!.getBoundingClientRect();
             textBoxSizeHeight = textBoxSize.height;
             textBoxSizeWidth = textBoxSize.width;
             circleFavourableSVG
@@ -296,7 +313,7 @@ export class Visual implements IVisual {
                 .style('fill', this.visualSettings.Legend.fontColor);
 
 
-            textBoxSize = textAdverse.node().getBoundingClientRect();
+            textBoxSize = textAdverse.node()!.getBoundingClientRect();
             textBoxSizeHeight = textBoxSize.height;
             textBoxSizeWidth = textBoxSize.width;
             circleAdverseSVG
@@ -325,7 +342,7 @@ export class Visual implements IVisual {
         }
 
     }
-    private createWaterfallGraph(options, allData) {
+    private createWaterfallGraph(options: any, allData: any) {
         this.allowInteractions = true;
         if (this.visualSettings.chartOrientation.orientation == "Horizontal") {
             this.createWaterfallGraphHorizontal(options, allData);
@@ -335,7 +352,7 @@ export class Visual implements IVisual {
     }
 
 
-    private createWaterfallGraphVertical(options, allData) {
+    private createWaterfallGraphVertical(options: any, allData: any) {
 
         this.svgYAxis = this.chartContainer
             .append('svg');
@@ -344,7 +361,7 @@ export class Visual implements IVisual {
         this.svg.on('contextmenu', (event: MouseEvent) => {
 
             const mouseEvent: MouseEvent = event;
-            const eventTarget: EventTarget = mouseEvent.target;
+            const eventTarget: EventTarget | null = mouseEvent.target;
             let dataPoint: any = d3.select(<d3.BaseType>eventTarget).datum();
             this.selectionManager.showContextMenu(dataPoint ? dataPoint.selectionId : {}, {
                 x: mouseEvent.clientX,
@@ -387,7 +404,7 @@ export class Visual implements IVisual {
 
 
     }
-    private checkBarWidth(options) {
+    private checkBarWidth(options: any) {
         if (!this.visualSettings.xAxisFormatting.fitToWidth) {
             this.visualUpdateOptions = options;
 
@@ -418,7 +435,7 @@ export class Visual implements IVisual {
                 var dragScrollBarXStartposition = 0;
                 var scrollbarwidth = this.width * this.width / this.innerWidth;
 
-                var scrollbar = scrollBarGroup.append('rect')
+                var scrollbar: d3.Selection<any, any, any, any> = scrollBarGroup.append('rect')
                     .attr('width', scrollbarwidth)
                     .attr('height', this.scrollbarBreath)
                     .attr('x', 0)
@@ -488,8 +505,8 @@ export class Visual implements IVisual {
         }
         return currentgridLineStrokeWidth;
     }
-    private yValue = d => d.value;
-    private xValue = d => d.category;
+    private yValue = (d: any) => d.value;
+    private xValue = (d: any) => d.category;
 
     private getMinMaxValue() {
         if (this.visualSettings.yAxisFormatting.YAxisDataPointOption == "Range"
@@ -541,7 +558,7 @@ export class Visual implements IVisual {
 
 
     }
-    private createYAxis(gParent, adjustLeft) {
+    private createYAxis(gParent: any, adjustLeft: any) {
 
         var g = gParent.append('g').attr('class', 'yAxisParentGroup');
 
@@ -570,7 +587,7 @@ export class Visual implements IVisual {
             }
             yAxis.selectAll('path').style('fill', 'none').style('stroke', 'black').style('stroke-width', "0pt");
             /*if (this.visualSettings.yAxisFormatting.showZeroAxisGridLine) {
-                yAxis.selectAll('line').each((d, i, nodes) => {
+                yAxis.selectAll('line').each((d: any, i: number, nodes: any) => {
 
                     if (d == 0) {
                         d3.select(nodes[i]).style('fill', 'none').style('stroke', this.visualSettings.yAxisFormatting.zeroLineColor).style('stroke-width', this.visualSettings.yAxisFormatting.zeroLineStrokeWidth + "pt");
@@ -592,7 +609,7 @@ export class Visual implements IVisual {
                 yAxis.selectAll('line').style('fill', 'none').style('stroke', this.visualSettings.yAxisFormatting.gridLineColor).style('stroke-width', "0pt");
             }
             if (this.visualSettings.yAxisFormatting.showZeroAxisGridLine) {
-                yAxis.selectAll('line').each((d, i, nodes) => {
+                yAxis.selectAll('line').each((d: any, i: number, nodes: any) => {
                     if (d == 0) {
                         d3.select(nodes[i]).style('fill', 'none').style('stroke', this.visualSettings.yAxisFormatting.zeroLineColor).style('stroke-width', this.visualSettings.yAxisFormatting.zeroLineStrokeWidth / 10 + "pt");
                     }
@@ -602,7 +619,7 @@ export class Visual implements IVisual {
             /*if (this.visualSettings.yAxisFormatting.showGridLine) {
                 yAxis.selectAll('line').style('fill', 'none').style('stroke', this.visualSettings.yAxisFormatting.gridLineColor).style('stroke-width', this.defaultYAxisGridlineStrokeWidth() / 10 + "pt");
             } else if (this.visualSettings.yAxisFormatting.showZeroAxisGridLine) {
-                yAxis.selectAll('line').each((d, i, nodes) => {
+                yAxis.selectAll('line').each((d: any, i: number, nodes: any) => {
 
                     if (d == 0) {
                         d3.select(nodes[i]).style('fill', 'none').style('stroke', this.visualSettings.yAxisFormatting.gridLineColor).style('stroke-width', this.defaultYAxisGridlineStrokeWidth() / 10 + "pt");
@@ -617,8 +634,8 @@ export class Visual implements IVisual {
 
             // adjust the left margin of the chart area according to the width of yaxis             
             // yAxisWidth used to adjust the left margin
-            /*var yAxisWidth = yAxis.node().getBoundingClientRect().width;
-            var yAxisHeight = yAxis.selectAll('text').node().getBoundingClientRect().height;*/
+            /*var yAxisWidth = yAxis.node()!.getBoundingClientRect().width;
+            var yAxisHeight = yAxis.selectAll('text').node()!.getBoundingClientRect().height;*/
 
 
             yAxis.selectAll('line').attr('x2', this.innerWidth);
@@ -628,7 +645,7 @@ export class Visual implements IVisual {
 
 
     }
-    private getYaxisWidth(gParent) {
+    private getYaxisWidth(gParent: any) {
 
         var g = gParent.append('g').attr('class', 'yAxisParentGroup');
         var yScale = d3.scaleLinear()
@@ -661,12 +678,12 @@ export class Visual implements IVisual {
 
             // adjust the left margin of the chart area according to the width of yaxis             
             // yAxisWidth used to adjust the left margin
-            this.yAxisWidth = yAxis.node().getBoundingClientRect().width;
+            this.yAxisWidth = yAxis.node()!.getBoundingClientRect().width;
             this.innerWidth = this.innerWidth - this.yAxisWidth;
         }
         g.remove();
     }
-    private yBreakdown(d, i) {
+    private yBreakdown(d: any, i: number) {
         var yBreakdownValue = 0;
         var startingPointCumulative = 0
         var yScale = d3.scaleLinear()
@@ -696,7 +713,7 @@ export class Visual implements IVisual {
         return yBreakdownValue;
     }
 
-    private getYPosition(d, i) {
+    private getYPosition(d: any, i: number) {
         var Yposition = 0;
         var yScale = d3.scaleLinear()
             .domain([this.minValue, this.maxValue])
@@ -713,7 +730,7 @@ export class Visual implements IVisual {
         }
         return parseFloat(Yposition.toFixed(2)); //Math.round(Yposition,2);
     }
-    private getHeight(d, i) {
+    private getHeight(d: any, i: number) {
         var yScale = d3.scaleLinear()
             .domain([this.minValue, this.maxValue])
             .range([this.innerHeight, 0]);
@@ -740,15 +757,15 @@ export class Visual implements IVisual {
         }
     }
 
-    private createLabels(gParent) {
+    private createLabels(gParent: any) {
 
         var g = gParent.append('g').attr('class', 'myBarLabels');
 
-        var yPosition = (d, i) => {
+        var yPosition = (d: any, i: number) => {
             var yPosition
             var nodeID = i;
             var heightAdjustment = 0;
-            pillarLabelsg.each((d, i, nodes) => {
+            pillarLabelsg.each((d: any, i: number, nodes: any) => {
                 if (nodeID == i) {
 
                     heightAdjustment = nodes[i].getBoundingClientRect().height;
@@ -812,34 +829,35 @@ export class Visual implements IVisual {
             var pillarLabels = pillarLabelsg
                 .append('text')
                 .attr('class', 'labels');
-            var labelFormatting = d => {
+            var labelFormatting = (d: any) => {
                 return this.formatValueforLabels(d);
                 //return this.formattedValuefromData(d);
             }
 
             var pillarLabelsText = pillarLabels
-                .text(d => labelFormatting(d));
+                .text((d: any) => labelFormatting(d));
 
             pillarLabelsText.style('font-size', this.visualSettings.LabelsFormatting.fontSize + "pt")
                 .style("font-family", this.visualSettings.LabelsFormatting.fontFamily)
-                .style('fill', (d) => {
+                .style('fill', (d: any) => {
                     return d.customFontColor;
                 });
 
-            pillarLabelsg.attr('transform', (d, i) => `translate(${xScale(d.category)},${yPosition(d, i)})`)
+            pillarLabelsg.attr('transform', (d: any, i: number) => `translate(${xScale(d.category)},${yPosition(d, i)})`)
 
         }
         g.selectAll(".labels")
             .call(this.labelFitToWidth);
         this.tooltipServiceWrapper.addTooltip(g.selectAll('.labels'),
             (dataPoint: any) => this.getTooltipData(dataPoint),
-            () => null);
+            // no identity-based tooltips here; the util's identity getter is optional
+            () => (null as unknown as ISelectionId));
 
         g.selectAll(".labels")
             .call(this.labelAlignment, xScale.bandwidth());
         g.attr('transform', `translate(${0},${this.margin.top})`);
     }
-    private createBars(gParent, data) {
+    private createBars(gParent: any, data: any) {
         var g = gParent.append('g').attr('class', 'myBars');
 
         var xScale = d3.scaleBand()
@@ -849,11 +867,11 @@ export class Visual implements IVisual {
 
         this.bars = g.selectAll('rect').data(this.barChartData)
             .enter().append('rect')
-            .attr('x', d => xScale(d.category))
-            .attr('y', (d, i) => this.getYPosition(d, i))
+            .attr('x', (d: any) => xScale(d.category))
+            .attr('y', (d: any, i: number) => this.getYPosition(d, i))
             .attr('width', xScale.bandwidth())
-            .attr('height', (d, i) => this.getHeight(d, i))
-            .attr('fill', d => d.customBarColor);
+            .attr('height', (d: any, i: number) => this.getHeight(d, i))
+            .attr('fill', (d: any) => d.customBarColor);
         this.applyBarAccessibility(this.bars);
         if (this.isHighContrast) {
             // Override any per-bar / conditional fill copied straight into
@@ -865,7 +883,7 @@ export class Visual implements IVisual {
 
         //line joinning the bars
         if (this.visualSettings.yAxisFormatting.joinBars) {
-            this.bars.each((d, i, nodes) => {
+            this.bars.each((d: any, i: number, nodes: any) => {
                 if (i != 0) {
                     g.append('line')
                         .style("stroke", this.visualSettings.yAxisFormatting.joinBarsColor)
@@ -901,7 +919,7 @@ export class Visual implements IVisual {
                     .clear()
                     .then(() => {
                         this.selectionManager.registerOnSelectCallback(
-                            (ids: ISelectionId[]) => {
+                            (ids: ISelectionIdBase[]) => {
                                 this.syncSelectionState(this.bars, ids);
                             });
                     });
@@ -925,7 +943,7 @@ export class Visual implements IVisual {
                     }
                     this.selectionManager
                         .select(d.selectionId, isCtrlPressed)
-                        .then((ids: ISelectionId[]) => {
+                        .then((ids: ISelectionIdBase[]) => {
                             this.syncSelectionState(this.bars, ids);
                         });
                     event.stopPropagation();
@@ -982,7 +1000,7 @@ export class Visual implements IVisual {
                         }
                         self.selectionManager
                             .select(d.selectionId, event.ctrlKey || event.metaKey || event.shiftKey)
-                            .then((ids: ISelectionId[]) => self.syncSelectionState(self.bars, ids));
+                            .then((ids: ISelectionIdBase[]) => self.syncSelectionState(self.bars, ids));
                         break;
                     case 'ArrowRight':
                     case 'ArrowDown':
@@ -1012,7 +1030,7 @@ export class Visual implements IVisual {
                 }
             });
     }
-    private syncSelectionState = (bars, selectionIds: ISelectionId[]) => {
+    private syncSelectionState = (bars: any, selectionIds: ISelectionIdBase[]) => {
         if (!bars) {
             return;
         }
@@ -1023,7 +1041,7 @@ export class Visual implements IVisual {
             }
             return;
         }
-        bars.each((d, i, nodes) => {
+        bars.each((d: any, i: number, nodes: any) => {
             const isSelected: boolean = this.isSelectionIdInArray(selectionIds, d.selectionId);
             d3.select(nodes[i]).attr('fill-opacity', isSelected
                 ? 1
@@ -1036,16 +1054,16 @@ export class Visual implements IVisual {
             }
         });
     }
-    private isSelectionIdInArray(selectionIds: ISelectionId[], selectionId: ISelectionId): boolean {
+    private isSelectionIdInArray(selectionIds: ISelectionIdBase[], selectionId: ISelectionIdBase): boolean {
 
         if (!selectionIds || !selectionId) {
             return false;
         }
-        return selectionIds.some((currentSelectionId: ISelectionId) => {
-            return currentSelectionId.includes(selectionId);
+        return selectionIds.some((currentSelectionId) => {
+            return (currentSelectionId as ISelectionId).includes(selectionId as ISelectionId);
         });
     };
-    private lineWidth(d, i) {
+    private lineWidth(d: any, i: number) {
         var defaultwidth = this.defaultXAxisGridlineStrokeWidth() / 10 + "pt";
         if (d.displayName == "" || i == 0) {
             defaultwidth = "0" + "pt";
@@ -1058,7 +1076,7 @@ export class Visual implements IVisual {
     }
     private getTooltipData(value: any): VisualTooltipDataItem[] {
 
-        var tooltip = [];
+        var tooltip: any[] = [];
         if (value.isPillar == 1) {
             tooltip = [{
                 displayName: value.toolTipDisplayValue1,
@@ -1085,24 +1103,24 @@ export class Visual implements IVisual {
     }
     private getTooltipXaxis(value: any): VisualTooltipDataItem[] {
 
-        var tooltip = [];
+        var tooltip: any[] = [];
         tooltip = [{
             displayName: value.displayName,
         }];
 
         return tooltip;
     }
-    private labelAlignment(tspan, width) {
+    private labelAlignment(tspan: any, width: any) {
 
-        tspan.each(function () {
+        tspan.each(function (this: SVGTextContentElement) {
             var tspan = d3.select(this);
-            var tspanWidth = tspan.node().getComputedTextLength();
+            var tspanWidth = tspan.node()!.getComputedTextLength();
             var diff = (width - tspanWidth) / 2;
             tspan.attr('dx', diff);
 
         });
     }
-    private findXaxisAdjustment = (data): number => {
+    private findXaxisAdjustment = (data: any): number => {
         var returnvalue = 0;
         if (this.visualSettings.yAxisFormatting.YAxisDataPointOption == "Auto" || this.visualSettings.yAxisFormatting.YAxisDataPointOption == "Range") {
 
@@ -1111,7 +1129,7 @@ export class Visual implements IVisual {
             *************************************************/
             var minDataPoint = 0;
             var maxDataPoint = 0;
-            var cumulativeDataPoints = [];
+            var cumulativeDataPoints: any[] = [];
             for (let index = 0; index < data.length; index++) {
 
                 if (data[index].isPillar == 0) {
@@ -1142,13 +1160,13 @@ export class Visual implements IVisual {
         }
         return returnvalue;
     }
-    private findMinCumulativeValue = (data): number => {
+    private findMinCumulativeValue = (data: any): number => {
         var minDataPoint = 0;
         /*if (this.visualSettings.yAxisFormatting.YAxisDataPointOption == "Range") {
             minDataPoint = this.visualSettings.yAxisFormatting.YAxisDataPointStartRange;
         } else */ {
 
-            var cumulativeDataPoints = [];
+            var cumulativeDataPoints: any[] = [];
             for (let index = 0; index < data.length; index++) {
 
                 if (data[index].isPillar == 0) {
@@ -1178,12 +1196,12 @@ export class Visual implements IVisual {
         }
         return minDataPoint;
     }
-    private findMaxCumulativeValue = (data): number => {
+    private findMaxCumulativeValue = (data: any): number => {
         var maxDataPoint = 0;
         /*if (this.visualSettings.yAxisFormatting.YAxisDataPointOption == "Range") {
             maxDataPoint = this.visualSettings.yAxisFormatting.YAxisDataPointEndRange;
         } else*/ {
-            var cumulativeDataPoints = [];
+            var cumulativeDataPoints: any[] = [];
             for (let index = 0; index < data.length; index++) {
                 if (data[index].isPillar == 0) {
                     if (index == 0) {
@@ -1256,22 +1274,22 @@ export class Visual implements IVisual {
 
     }
     private getDataStaticWaterfall(options: VisualUpdateOptions) {
-        let dataView: DataView = options.dataViews[0];
+        const dataView = this.requireMatrixDataView(options);
 
-        var visualData = [];
+        var visualData: any[] = [];
         var sortOrderIndex = 0;
-        for (let index = 0; index < dataView.matrix.columns.root.children.length; index++) {
-            dataView.matrix.rows.root.children.forEach((x: DataViewMatrixNode) => {
+        for (let index = 0; index < dataView.matrix.columns.root.children!.length; index++) {
+            dataView.matrix.rows.root.children!.forEach((x: DataViewMatrixNode) => {
                 var checkforZero = false;
-                if (this.visualSettings.LabelsFormatting.HideZeroBlankValues && +x.values[index].value == 0) {
+                if (this.visualSettings.LabelsFormatting.HideZeroBlankValues && Number(x.values![index].value) == 0) {
                     checkforZero = true;
                 }
                 if (checkforZero == false) {
-                    var data2 = [];
-                    data2["value"] = +x.values[index].value;
-                    data2["numberFormat"] = this.resolveFormat(x.values[index], dataView.matrix.valueSources[index].format);
+                    var data2: any = [];
+                    data2["value"] = Number(x.values![index].value);
+                    data2["numberFormat"] = this.resolveFormat(x.values![index], dataView.matrix.valueSources[index].format);
                     data2["selectionId"] = this.host.createSelectionIdBuilder()
-                        .withMeasure(dataView.matrix.valueSources[index].queryName)
+                        .withMeasure(dataView.matrix.valueSources[index].queryName ?? "")
                         .createSelectionId();
                     var y = dataView.matrix.valueSources[index];
                     if (y.objects) {
@@ -1296,13 +1314,13 @@ export class Visual implements IVisual {
                             }
                         }
                         if (y.objects.sentimentColor && !this.visualSettings.chartOrientation.useSentimentFeatures) {
-                            data2["customBarColor"] = y.objects["sentimentColor"]["fill"]["solid"]["color"];
+                            data2["customBarColor"] = (y.objects as any)["sentimentColor"]["fill"]["solid"]["color"];
                         } else {
                             data2["customBarColor"] = this.getfillColor(data2["isPillar"], data2["value"]);
                         }
                         if (y.objects.LabelsFormatting && !this.visualSettings.chartOrientation.useSentimentFeatures && !this.visualSettings.LabelsFormatting.useDefaultFontColor) {
                             if (y.objects.LabelsFormatting.fill) {
-                                data2["customFontColor"] = y.objects["LabelsFormatting"]["fill"]["solid"]["color"];
+                                data2["customFontColor"] = (y.objects as any)["LabelsFormatting"]["fill"]["solid"]["color"];
                             } else {
                                 data2["customFontColor"] = this.getLabelFontColor(data2["isPillar"], data2["value"]);
                             }
@@ -1351,8 +1369,8 @@ export class Visual implements IVisual {
         visualData = this.sortData(visualData);
         return visualData;
     }
-    private sortData(visualData) {
-        visualData.sort((a, b) => {
+    private sortData(visualData: any) {
+        visualData.sort((a: any, b: any) => {
             switch (this.visualSettings.chartOrientation.sortData) {
                 case 3:
                     if (Math.floor(a.sortOrderIndex) === Math.floor(b.sortOrderIndex)) {
@@ -1375,8 +1393,8 @@ export class Visual implements IVisual {
         });
         return visualData;
     }
-    private sortDataDrillable(visualData) {
-        visualData.sort((a, b) => {
+    private sortDataDrillable(visualData: any) {
+        visualData.sort((a: any, b: any) => {
             switch (this.visualSettings.chartOrientation.sortData) {
                 case 3:
                     //if (a.isPillar != 1) {
@@ -1400,10 +1418,10 @@ export class Visual implements IVisual {
     }
 
     private getDataDrillableWaterfall(options: VisualUpdateOptions) {
-        let dataView: DataView = options.dataViews[0];
-        var totalData = [];
-        var visualData = [];
-        var allMeasureValues = [];
+        const dataView = this.requireMatrixDataView(options);
+        var totalData: any[] = [];
+        var visualData: any[] = [];
+        var allMeasureValues: any[] = [];
         // find all values and aggregate them in an array of array with each child in an array of a measure
         allMeasureValues = this.findLowestLevels();
         var sortOrderPrecision = Math.pow(10, allMeasureValues.length * allMeasureValues[0].length.toString().length);
@@ -1412,14 +1430,14 @@ export class Visual implements IVisual {
         for (let indexMeasures = 0; indexMeasures < allMeasureValues.length; indexMeasures++) {
             var totalValueofMeasure = 0;
             var toolTipDisplayValue1 = "";
-            var toolTipDisplayValue2 = "";
-            var Measure1Value: number = null;
-            var Measure2Value: number = null;            
-            var dataPillar = [];
+            var toolTipDisplayValue2: string | null = "";
+            var Measure1Value: number | null = null;
+            var Measure2Value: number | null = null;            
+            var dataPillar: any[] = [];
             for (let nodeItems = 0; nodeItems < allMeasureValues[indexMeasures].length; nodeItems++) {
                 totalValueofMeasure = totalValueofMeasure + allMeasureValues[indexMeasures][nodeItems].value
                 if (indexMeasures < allMeasureValues.length - 1) {
-                    var data2Category = [];
+                    var data2Category: any[] = [];
                     Measure1Value = +allMeasureValues[indexMeasures][nodeItems].value;
                     Measure2Value = +allMeasureValues[indexMeasures + 1][nodeItems].value;
                     var valueDifference = Measure2Value - Measure1Value;
@@ -1453,19 +1471,19 @@ export class Visual implements IVisual {
         if (dataView.matrix.rows.levels.length === 1) {
             this.sortDataDrillable(visualData);
         } else {
-            visualData.sort((a, b) => {
+            visualData.sort((a: any, b: any) => {
                 return a.sortOrderIndex - b.sortOrderIndex;
             });
         }
         // add arrays to the main array for additional x-axis for each category
         for (let levelItems = 0; levelItems < dataView.matrix.rows.levels.length - 1; levelItems++) {
-            var categorynode = []
+            var categorynode: any[] = []
             var childrenCount = 1;
             var displayNode;
 
             for (let nodeItems = 0; nodeItems < visualData.length; nodeItems++) {
                 var currNode = visualData[nodeItems];
-                var childnode = [];
+                var childnode: any = [];
                 var currCategoryText: string = currNode["category"];
                 var currCategoryArray: string[] = currCategoryText.split("|");
                 var newDisplayName = currCategoryArray[levelItems + 1];
@@ -1501,9 +1519,9 @@ export class Visual implements IVisual {
     }
 
     private getDataStaticCategoryWaterfall(options: VisualUpdateOptions) {
-        let dataView: DataView = options.dataViews[0];
+        const dataView = this.requireMatrixDataView(options);
 
-        var visualData = [];
+        var visualData: any[] = [];
         var hasPillar = false;
         //*******************************************************************
         //This will always be zero as it should only have 1 measure
@@ -1511,17 +1529,17 @@ export class Visual implements IVisual {
         //*******************************************************************
         var sortOrderIndex = 0;
         var orderIndex = 0;
-        dataView.matrix.rows.root.children.forEach((x: DataViewMatrixNode) => {
+        dataView.matrix.rows.root.children!.forEach((x: DataViewMatrixNode) => {
             var checkforZero = false;
-            if (this.visualSettings.LabelsFormatting.HideZeroBlankValues && +x.values[measureIndex].value == 0) {
+            if (this.visualSettings.LabelsFormatting.HideZeroBlankValues && Number(x.values![measureIndex].value) == 0) {
                 checkforZero = true;
             }
             if (checkforZero == false) {
-                var data2 = [];
+                var data2: any = [];
 
-                data2["value"] = +x.values[measureIndex].value;
+                data2["value"] = Number(x.values![measureIndex].value);
 
-                data2["numberFormat"] = this.resolveFormat(x.values[measureIndex], dataView.matrix.valueSources[measureIndex].format);
+                data2["numberFormat"] = this.resolveFormat(x.values![measureIndex], dataView.matrix.valueSources[measureIndex].format);
                 data2["selectionId"] = this.host.createSelectionIdBuilder()
                     .withMatrixNode(x, dataView.matrix.rows.levels)
                     .createSelectionId();
@@ -1543,13 +1561,13 @@ export class Visual implements IVisual {
                         data2["isPillar"] = 0;
                     }
                     if (x.objects.sentimentColor && !this.visualSettings.chartOrientation.useSentimentFeatures) {
-                        data2["customBarColor"] = x.objects["sentimentColor"]["fill"]["solid"]["color"];
+                        data2["customBarColor"] = (x.objects as any)["sentimentColor"]["fill"]["solid"]["color"];
                     } else {
                         data2["customBarColor"] = this.getfillColor(data2["isPillar"], data2["value"]);
                     }
                     if (x.objects.LabelsFormatting && !this.visualSettings.LabelsFormatting.useDefaultFontColor) {
                         if (x.objects.LabelsFormatting.fill) {
-                            data2["customFontColor"] = x.objects["LabelsFormatting"]["fill"]["solid"]["color"];
+                            data2["customFontColor"] = (x.objects as any)["LabelsFormatting"]["fill"]["solid"]["color"];
                         } else {
                             data2["customFontColor"] = this.getLabelFontColor(data2["isPillar"], data2["value"]);
                         }
@@ -1600,10 +1618,10 @@ export class Visual implements IVisual {
         visualData = this.sortData(visualData);
         return visualData;
     }
-    private limitBreakdownsteps(options: VisualUpdateOptions, currData) {
+    private limitBreakdownsteps(options: VisualUpdateOptions, currData: any) {
         //var currData = []
         //currData = this.getDataStaticCategoryWaterfall(options);
-        currData.sort((a, b) => {
+        currData.sort((a: any, b: any) => {
             if (Math.round(a.sortOrderIndexforLimitBreakdown) === Math.round(b.sortOrderIndexforLimitBreakdown) && a.isPillar !=1) {
                 return parseFloat(Math.abs(b.value).toString()) - parseFloat(Math.abs(a.value).toString());
             } else {
@@ -1613,7 +1631,7 @@ export class Visual implements IVisual {
         var limit = this.visualSettings.chartOrientation.maxBreakdown;
         var limitcounter = 0;
         var otherbreakdownstepCount = 0;
-        var newOther = [];
+        var newOther: any[] = [];
         var otherTotalValue = 0;
         var othersortOrderIndex = 0;
         for (let index = 0; index < currData.length; index++) {
@@ -1659,7 +1677,7 @@ export class Visual implements IVisual {
             }
 
         }
-        currData.sort((a, b) => {
+        currData.sort((a: any, b: any) => {
             if (a.sortOrderIndexforLimitBreakdown === b.sortOrderIndexforLimitBreakdown) {
                 //return parseFloat(Math.abs(b.value).toString()) - parseFloat(Math.abs(a.value).toString());
                 //return a.orderIndex - b.orderIndex;
@@ -1673,14 +1691,14 @@ export class Visual implements IVisual {
 
         return currData;
     }
-    private addOtherBreakdownStep(options: VisualUpdateOptions, value, sortOrderIndex,sortOrderIndexforLimitBreakdown, otherbreakdownstepCount) {
+    private addOtherBreakdownStep(options: VisualUpdateOptions, value: any, sortOrderIndex: any, sortOrderIndexforLimitBreakdown: any, otherbreakdownstepCount: any) {
         //*******************Add "Other" breakdown item *********************
-        let dataView: DataView = options.dataViews[0];
+        const dataView = this.requireMatrixDataView(options);
         //*******************************************************************
         //This will always be zero as it should only have 1 measure
         var measureIndex = 0;
         //
-        var data2 = [];
+        var data2: any = [];
 
         data2["value"] = value;
 
@@ -1713,10 +1731,10 @@ export class Visual implements IVisual {
     }
     private getDataDrillableCategoryWaterfall(options: VisualUpdateOptions) {
 
-        let dataView: DataView = options.dataViews[0];
-        var totalData = [];
-        var visualData = [];
-        var allMeasureValues = [];
+        const dataView = this.requireMatrixDataView(options);
+        var totalData: any[] = [];
+        var visualData: any[] = [];
+        var allMeasureValues: any[] = [];
 
         // find all values and aggregate them in an array of array with each child in an array of a measure        
         allMeasureValues = this.findLowestLevels();
@@ -1726,11 +1744,11 @@ export class Visual implements IVisual {
         let indexMeasures = 0;
         var totalValueofMeasure = 0;
         var toolTipDisplayValue1 = "";
-        var Measure1Value: number = null;
+        var Measure1Value: number | null = null;
         for (let nodeItems = 0; nodeItems < allMeasureValues[indexMeasures].length; nodeItems++) {
             totalValueofMeasure = totalValueofMeasure + allMeasureValues[indexMeasures][nodeItems].value
 
-            var data2Category = [];
+            var data2Category: any[] = [];
             Measure1Value = +allMeasureValues[indexMeasures][nodeItems].value;
 
             var valueDifference = Measure1Value;
@@ -1754,13 +1772,13 @@ export class Visual implements IVisual {
 
         // add arrays to the main array for additional x-axis for each category
         for (let levelItems = 0; levelItems < dataView.matrix.rows.levels.length - 1; levelItems++) {
-            var categorynode = []
+            var categorynode: any[] = []
             var childrenCount = 1;
             var displayNode;
 
             for (let nodeItems = 0; nodeItems < visualData.length; nodeItems++) {
                 var currNode = visualData[nodeItems];
-                var childnode = [];
+                var childnode: any = [];
                 var currCategoryText: string = currNode["category"];
                 var currCategoryArray: string[] = currCategoryText.split("|");
                 var newDisplayName = currCategoryArray[levelItems + 1];
@@ -1799,10 +1817,10 @@ export class Visual implements IVisual {
     }
     private findLowestLevels() {
 
-        function getChildLevel(currentNode, parentText: string, indexMeasures, rootnode: boolean) {
+        function getChildLevel(currentNode: any, parentText: string, indexMeasures: any, rootnode: boolean) {
 
             if (currentNode.children.length != undefined) {
-                currentNode.children.forEach(child => {
+                currentNode.children.forEach((child: any) => {
                     if (rootnode) {
                         parentNodes.length = 0;
                     }
@@ -1823,7 +1841,7 @@ export class Visual implements IVisual {
                         /* data2["xAxisFormat"] = dataView.matrix.rows.levels[0].sources[0].format;
                         data2["type"] = dataView.matrix.rows.levels[indexMeasures].sources[0].type;
                         data2["category"] = this.formatCategory(x.value, data2["type"], data2["xAxisFormat"]); */
-                        var node = [];
+                        var node: any = [];
                         node["value"] = child.values[indexMeasures].value;
                         node["numberFormat"] = getFormatCategory.resolveFormat(child.values[indexMeasures], dataView.matrix.valueSources[indexMeasures].format);
                         node["category"] = (parentText + "|" + getFormatCategory.formatCategory(child.value, type, format)).replace("null", "(blank)");
@@ -1835,7 +1853,7 @@ export class Visual implements IVisual {
                         }
 
                         var selectionbuilder = host1.createSelectionIdBuilder();
-                        var selectionnode;
+                        var selectionnode: any = host1.createSelectionIdBuilder();
                         if (parentNodes.length > 0) {
                             parentNodes.forEach(nodes => {
                                 selectionnode = selectionbuilder.withMatrixNode(nodes, rows.levels)
@@ -1851,28 +1869,28 @@ export class Visual implements IVisual {
                 });
             }
         };
-        var dataView = this.visualUpdateOptions.dataViews[0];
+        const dataView = this.requireMatrixDataView(this.visualUpdateOptions);
         var rows = dataView.matrix.rows;
         var root = rows.root;
-        var allNodes = [];
+        var allNodes: any[] = [];
         var childrenCount = 0;
         var host1 = this.host;
         var getFormatCategory = this;
-        var parentNodes = [];
+        var parentNodes: any[] = [];
         for (let indexMeasures = 0; indexMeasures < dataView.matrix.valueSources.length; indexMeasures++) {
-            var nodes = [];
+            var nodes: any[] = [];
             getChildLevel(root, "", indexMeasures, true);
             allNodes.push(nodes);
         }
         return allNodes;
 
     }
-    private getAllMatrixLevelsNew(root, num) {
+    private getAllMatrixLevelsNew(root: any, num: any) {
 
-        function getChildLevel(currentNode, parentText: string) {
+        function getChildLevel(currentNode: any, parentText: string) {
             if (currentNode.children.length != undefined) {
 
-                currentNode.children.forEach(child => {
+                currentNode.children.forEach((child: any) => {
                     if (index == num) {
                         mainNode.push(createNode(child));
                     } else {
@@ -1890,11 +1908,11 @@ export class Visual implements IVisual {
             }
 
         };
-        function createNode(child) {
-            var node = [];
+        function createNode(child: any) {
+            var node: any = [];
             if (child.children == undefined) {
                 for (let indexMeasures = 0; indexMeasures < dataView.matrix.valueSources.length; indexMeasures++) {
-                    var nodeValue = [];
+                    var nodeValue: any[] = [];
                     nodeValue = child.values[indexMeasures].value;
                     node.push(nodeValue);
                 }
@@ -1920,35 +1938,35 @@ export class Visual implements IVisual {
             node["selectionId"] = selectionId;
             return node;
         }
-        function countChildrens(child) {
+        function countChildrens(child: any) {
             if (child.children == undefined) {
                 counter = counter + 1;
             } else {
-                child.children.forEach(element => {
+                child.children.forEach((element: any) => {
                     countChildrens(element)
                 });
             }
 
         }
-        var counter;
+        var counter = 0;
         var index = 0;
-        var allNodes = [];
+        var allNodes: any[] = [];
         var childrenCount = 0;
         var host1 = this.host
         var getFormatCategory = this;
-        var nodes = [];
-        var mainNode = [];
-        var dataView = this.visualUpdateOptions.dataViews[0];
+        var nodes: any[] = [];
+        var mainNode: any[] = [];
+        const dataView = this.requireMatrixDataView(this.visualUpdateOptions);
         var rows = dataView.matrix.rows;
         getChildLevel(root, "");
         allNodes.push(nodes);
         return mainNode;
 
     }
-    private createXaxis(gParent, options, allDatatemp) {
+    private createXaxis(gParent: any, options: any, allDatatemp: any) {
         var g = gParent.append('g').attr('class', 'xAxisParentGroup');
         var myAxisParentHeight = 0;
-        var dataView = this.visualUpdateOptions.dataViews[0];
+        const dataView = this.requireMatrixDataView(this.visualUpdateOptions);
         var rows = dataView.matrix.rows;
         var root = rows.root;
         var levels = allDatatemp.length;
@@ -1969,7 +1987,9 @@ export class Visual implements IVisual {
         }
 
         for (var allDataIndex = levels - 1; allDataIndex >= 0; allDataIndex--) {
-            var currData = [];
+            var currData: any[] = [];
+            var xAxisrange: any[] = [];
+            var currChildCount = 0;
 
             if (allDataIndex == (levels - 1)) {
                 xScale = xBaseScale;
@@ -1978,10 +1998,8 @@ export class Visual implements IVisual {
             } else {
 
                 currData = this.getAllMatrixLevelsNew(root, allDataIndex);
-                var xAxisrange = [];
-                var currChildCount = 0
                 xAxisrange.push(0);
-                currData.forEach(element => {
+                currData.forEach((element: any) => {
                     currChildCount = currChildCount + myBandwidth * element.childrenCount;
                     xAxisrange.push(currChildCount);
                 });
@@ -2010,7 +2028,7 @@ export class Visual implements IVisual {
             myAxisParentHeight = this.findBottom;
         }
 
-        g.selectAll('text').each((d, i, nodes) => {
+        g.selectAll('text').each((d: any, i: number, nodes: any) => {
 
             if (this.xAxisPosition <= nodes[i].getBoundingClientRect().bottom) {
                 this.xAxisPosition = nodes[i].getBoundingClientRect().bottom;
@@ -2021,9 +2039,9 @@ export class Visual implements IVisual {
 
         this.innerHeight = this.height - this.margin.top - this.margin.bottom - this.xAxisPosition - this.scrollbarBreath + this.legendHeight;
     }
-    private findBottom;
+    private findBottom = 0;
 
-    private createAxis(myxAxisParent, g, baseAxis: boolean, myWidth, index: number, xScale, xBaseScale, currData, allDataIndex, levels, xAxisrange, myAxisParentHeight) {
+    private createAxis(myxAxisParent: any, g: any, baseAxis: boolean, myWidth: any, index: number, xScale: any, xBaseScale: any, currData: any, allDataIndex: any, levels: any, xAxisrange: any, myAxisParentHeight: any) {
         var myxAxisParentx = d3.axisBottom(xScale).tickSize(0);
         myxAxisParentx.tickSizeOuter(0);
         myxAxisParent = g.append('g')
@@ -2045,7 +2063,7 @@ export class Visual implements IVisual {
                 .attr('transform', `translate(${(xBaseScale.bandwidth() + (xBaseScale.step() * xBaseScale.padding() * 1.5)) + myWidth * (index - 1)},${myAxisParentHeight})`)
                 .selectAll('path').style('fill', 'none').style('stroke', this.visualSettings.yAxisFormatting.gridLineColor);
         }
-        var xAxislabels = myxAxisParent.selectAll(".tick text").data(currData).text(d => d.displayName);
+        var xAxislabels = myxAxisParent.selectAll(".tick text").data(currData).text((d: any) => d.displayName);
         if (this.visualType == "drillable" || this.visualType == "staticCategory" || this.visualType == "drillableCategory") {
             xAxislabels.on('click', (event: MouseEvent, d: any) => {
                 // Allow selection only if the visual is rendered in a view that supports interactivity (e.g. Report)
@@ -2056,7 +2074,7 @@ export class Visual implements IVisual {
                     }
                     this.selectionManager
                         .select(d.selectionId, isCtrlPressed)
-                        .then((ids: ISelectionId[]) => {
+                        .then((ids: ISelectionIdBase[]) => {
                             this.syncSelectionState(this.bars, ids);
                         });
                     event.stopPropagation();
@@ -2067,7 +2085,8 @@ export class Visual implements IVisual {
         this.tooltipServiceWrapper.addTooltip(
             myxAxisParent.selectAll(".tick text"),
             (dataPoint: any) => this.getTooltipXaxis(dataPoint),
-            () => null
+            // no identity-based tooltips here; the util's identity getter is optional
+            () => (null as unknown as ISelectionId)
         );
 
 
@@ -2085,7 +2104,7 @@ export class Visual implements IVisual {
 
 
             myxAxisParent.selectAll(".tick text").data(currData)
-                .attr('transform', (d, i) => `translate(${(xAxisrange[i + 1] - xAxisrange[i]) / 2
+                .attr('transform', (d: any, i: number) => `translate(${(xAxisrange[i + 1] - xAxisrange[i]) / 2
                     },${this.visualSettings.xAxisFormatting.padding})`);
 
             myxAxisParent.selectAll("line").remove();
@@ -2100,7 +2119,7 @@ export class Visual implements IVisual {
             xAxislabels.attr('transform', `translate(0,${this.visualSettings.xAxisFormatting.padding})`);
         }
 
-        myxAxisParent.selectAll("text").each((d, i, nodes) => {
+        myxAxisParent.selectAll("text").each((d: any, i: number, nodes: any) => {
             if (this.findBottom <= nodes[i].getBoundingClientRect().bottom) {
                 this.findBottom = nodes[i].getBoundingClientRect().bottom - this.legendHeight;
             };
@@ -2115,11 +2134,11 @@ export class Visual implements IVisual {
                 .style('fill', 'none')
                 .style('stroke', this.visualSettings.xAxisFormatting.gridLineColor)
                 .style('stroke-width', this.defaultXAxisGridlineStrokeWidth() / 8 + "pt");
-            var myAxisTop = myxAxisParent.select("path").node().getBoundingClientRect().top
+            var myAxisTop = myxAxisParent.select("path").node()!.getBoundingClientRect().top
             myxAxisParent.selectAll(".text").data(currData)
                 .enter()
                 .append("line")
-                .attr("x1", (d, i) => {
+                .attr("x1", (d: any, i: number) => {
                     var x1;
                     if (allDataIndex == (levels - 1)) {
                         x1 = xScale(d.category) - (xScale.padding() * xScale.step()) / 2;
@@ -2130,7 +2149,7 @@ export class Visual implements IVisual {
                     return x1;
                 })
                 .attr("y1", 0)
-                .attr("x2", (d, i) => {
+                .attr("x2", (d: any, i: number) => {
                     var x1;
                     if (allDataIndex == (levels - 1)) {
                         x1 = xScale(d.category) - (xScale.padding() * xScale.step()) / 2;
@@ -2140,7 +2159,7 @@ export class Visual implements IVisual {
                     return x1;
                 })
                 .attr("y2", this.findBottom - myAxisTop)
-                .attr("stroke-width", (d, i) => this.lineWidth(d, i))
+                .attr("stroke-width", (d: any, i: number) => this.lineWidth(d, i))
                 .attr("stroke", this.visualSettings.xAxisFormatting.gridLineColor);
         } else {
             myxAxisParent.selectAll('path')
@@ -2150,15 +2169,15 @@ export class Visual implements IVisual {
         }
     }
     private addTotalLine(data: any, options: VisualUpdateOptions) {
-        let dataView: DataView = options.dataViews[0];
-        var data2 = [];
+        const dataView = this.requireMatrixDataView(options);
+        var data2: any = [];
         var totalValue = 0;
         var orderIndex = 0;
         //*******************************************************************
         //This will always be zero as it should only have 1 measure
         var measureIndex = 0;
         //*******************************************************************
-        data.forEach(element => {
+        data.forEach((element: any) => {
             totalValue = totalValue + element["value"];
             if (orderIndex < element["orderIndex"]) {
                 orderIndex = element["orderIndex"];
@@ -2173,18 +2192,18 @@ export class Visual implements IVisual {
 
         var x = dataView.matrix.valueSources[measureIndex];
         data2["selectionId"] = this.host.createSelectionIdBuilder()
-            .withMeasure(x.queryName)
+            .withMeasure(x.queryName ?? "")
             .createSelectionId();
         if (x.objects) {
             if (x.objects.sentimentColor && !this.visualSettings.chartOrientation.useSentimentFeatures) {
-                data2["customBarColor"] = x.objects["sentimentColor"]["fill"]["solid"]["color"];
+                data2["customBarColor"] = (x.objects as any)["sentimentColor"]["fill"]["solid"]["color"];
             } else {
                 data2["customBarColor"] = this.getfillColor(data2["isPillar"], data2["value"]);
             }
 
             if (x.objects.LabelsFormatting && !this.visualSettings.chartOrientation.useSentimentFeatures && !this.visualSettings.LabelsFormatting.useDefaultFontColor) {
                 if (x.objects.LabelsFormatting.fill) {
-                    data2["customFontColor"] = x.objects["LabelsFormatting"]["fill"]["solid"]["color"];
+                    data2["customFontColor"] = (x.objects as any)["LabelsFormatting"]["fill"]["solid"]["color"];
                 } else {
                     data2["customFontColor"] = this.getLabelFontColor(data2["isPillar"], data2["value"]);
                 }
@@ -2215,9 +2234,9 @@ export class Visual implements IVisual {
         data2["sortOrderIndexforLimitBreakdown"] = 1;        
         return data2;
     }
-    private getDataForCategory(value: number, numberFormat: string, displayName: any, displayID: any, isPillar: number, selectionId: any, sortOrderIndex: number, childrenCount: number, toolTipDisplayValue1: string, toolTipDisplayValue2: string, Measure1Value: number, Measure2Value: number) {
+    private getDataForCategory(value: number, numberFormat: string, displayName: any, displayID: any, isPillar: number, selectionId: any, sortOrderIndex: number, childrenCount: number, toolTipDisplayValue1: string, toolTipDisplayValue2: string | null, Measure1Value: number | null, Measure2Value: number | null) {
 
-        var data2 = [];
+        var data2: any = [];
         data2["value"] = value;
         data2["numberFormat"] = numberFormat;
         data2["isPillar"] = isPillar;
@@ -2239,14 +2258,14 @@ export class Visual implements IVisual {
         return data2;
     }
 
-    private labelNoWrapText(text, standardwidth) {
+    private labelNoWrapText(text: any, standardwidth: any) {
 
         var width;
-        text.each(function () {
+        text.each(function (this: SVGTextContentElement) {
             var text = d3.select(this),
 
                 word,
-                line = [],
+                line: string[] = [],
                 lineNumber = 0,
                 lineHeight = 1,
                 y = text.attr("y"),
@@ -2255,7 +2274,7 @@ export class Visual implements IVisual {
 
 
 
-            width = standardwidth * text.datum()["childrenCount"];
+            width = standardwidth * (text.datum() as any)["childrenCount"];
             joinwith = "";
             var words = text.text().split("").reverse();
 
@@ -2264,7 +2283,7 @@ export class Visual implements IVisual {
             while (word = words.pop()) {
                 line.push(word);
                 tspan.text(line.join(joinwith));
-                if (tspan.node().getComputedTextLength() > width) {
+                if (tspan.node()!.getComputedTextLength() > width) {
 
                     // if the 3 lines goes over the standard width, then add "..." and stop adding any more lines
                     if (line.length != 1) {
@@ -2285,29 +2304,29 @@ export class Visual implements IVisual {
             }
         });
     }
-    private labelWrapText(text, standardwidth) {
+    private labelWrapText(text: any, standardwidth: any) {
         var width;
-        text.each(function () {
+        text.each(function (this: SVGTextContentElement) {
             var text = d3.select(this),
                 words = text.text().split(/\s+/).reverse(),
                 word,
-                line = [],
+                line: string[] = [],
                 lineNumber = 0,
                 lineHeight = 1.1,
                 y = text.attr("y"),
                 dy = parseFloat(text.attr("dy")),
                 tspan = text.text(null).append("tspan").attr("x", 0).attr("y", y).attr("dy", dy + "em");
-            width = standardwidth * text.datum()["childrenCount"];
+            width = standardwidth * (text.datum() as any)["childrenCount"];
 
             while (word = words.pop()) {
                 line.push(word);
                 tspan.text(line.join(" "));
 
-                if (tspan.node().getComputedTextLength() > width) {
+                if (tspan.node()!.getComputedTextLength() > width) {
 
                     if (line.length == 1) {
                         var currline = line[0].split("");
-                        while (tspan.node().getComputedTextLength() > width) {
+                        while (tspan.node()!.getComputedTextLength() > width) {
                             currline.pop()
                             line[0] = currline.join("");
                             tspan.text(line[0]);
@@ -2318,7 +2337,7 @@ export class Visual implements IVisual {
                         line = [word];
                         tspan = text.append("tspan").attr("x", 0).attr("y", y).attr("dy", ++lineNumber * lineHeight + dy + "em").text(word);
                         currline = tspan.text().split("");
-                        while (tspan.node().getComputedTextLength() > width) {
+                        while (tspan.node()!.getComputedTextLength() > width) {
                             currline.pop();
                             tspan.text(currline.join(""));
                         }
@@ -2327,8 +2346,8 @@ export class Visual implements IVisual {
             }
         });
     }
-    private labelFitToWidth(text) {
-        text.each((d, i, nodes) => {
+    private labelFitToWidth(text: any) {
+        text.each((d: any, i: number, nodes: any) => {
             if (i != 0) {
                 var boundaryLable2 = nodes[i].getBoundingClientRect();
                 var boundaryLable1 = nodes[i - 1].getBoundingClientRect();
@@ -2345,7 +2364,7 @@ export class Visual implements IVisual {
 
 
 
-    private createWaterfallGraphHorizontal(options, allData) {
+    private createWaterfallGraphHorizontal(options: any, allData: any) {
 
 
         this.svg = this.chartContainer
@@ -2355,7 +2374,7 @@ export class Visual implements IVisual {
         this.svg.on('contextmenu', (event: MouseEvent) => {
 
             const mouseEvent: MouseEvent = event;
-            const eventTarget: EventTarget = mouseEvent.target;
+            const eventTarget: EventTarget | null = mouseEvent.target;
             let dataPoint: any = d3.select(<d3.BaseType>eventTarget).datum();
             this.selectionManager.showContextMenu(dataPoint ? dataPoint.selectionId : {}, {
                 x: mouseEvent.clientX,
@@ -2405,7 +2424,7 @@ export class Visual implements IVisual {
 
     }
 
-    private createBarsHorizontal(gParent, data) {
+    private createBarsHorizontal(gParent: any, data: any) {
 
         var g = gParent.append('g').attr('class', 'myBars');
 
@@ -2416,11 +2435,11 @@ export class Visual implements IVisual {
 
         this.bars = g.selectAll('rect').data(this.barChartData)
             .enter().append('rect')
-            .attr('x', (d, i) => this.getXPositionHorizontal(d, i))
-            .attr('y', d => xScale(d.category))
-            .attr('width', (d, i) => this.getWidthHorizontal(d, i))
+            .attr('x', (d: any, i: number) => this.getXPositionHorizontal(d, i))
+            .attr('y', (d: any) => xScale(d.category))
+            .attr('width', (d: any, i: number) => this.getWidthHorizontal(d, i))
             .attr('height', xScale.bandwidth())
-            .attr('fill', d => d.customBarColor);
+            .attr('fill', (d: any) => d.customBarColor);
         this.applyBarAccessibility(this.bars);
         if (this.isHighContrast) {
             // Override any per-bar / conditional fill copied straight into
@@ -2431,7 +2450,7 @@ export class Visual implements IVisual {
 
         //line joinning the bars
         if (this.visualSettings.yAxisFormatting.joinBars) {
-            this.bars.each((d, i, nodes) => {
+            this.bars.each((d: any, i: number, nodes: any) => {
                 if (i != 0) {
                     g.append('line')
                         .style("stroke", this.visualSettings.yAxisFormatting.joinBarsColor)
@@ -2468,7 +2487,7 @@ export class Visual implements IVisual {
                     .clear()
                     .then(() => {
                         this.selectionManager.registerOnSelectCallback(
-                            (ids: ISelectionId[]) => {
+                            (ids: ISelectionIdBase[]) => {
                                 this.syncSelectionState(this.bars, ids);
                             });
                     });
@@ -2492,7 +2511,7 @@ export class Visual implements IVisual {
                     }
                     this.selectionManager
                         .select(d.selectionId, isCtrlPressed)
-                        .then((ids: ISelectionId[]) => {
+                        .then((ids: ISelectionIdBase[]) => {
                             this.syncSelectionState(this.bars, ids);
                         });
                     event.stopPropagation();
@@ -2510,7 +2529,7 @@ export class Visual implements IVisual {
 
 
     }
-    private xBreakdownHorizontal(d, i) {
+    private xBreakdownHorizontal(d: any, i: number) {
         var yBreakdownValue = 0;
         var startingPointCumulative = 0
         var yScale = d3.scaleLinear()
@@ -2539,7 +2558,7 @@ export class Visual implements IVisual {
 
         return yBreakdownValue;
     }
-    private getXPositionHorizontal(d, i) {
+    private getXPositionHorizontal(d: any, i: number) {
 
         var Yposition = 0;
 
@@ -2580,7 +2599,7 @@ export class Visual implements IVisual {
         }
         return Yposition;
     }
-    private getWidthHorizontal(d, i) {
+    private getWidthHorizontal(d: any, i: number) {
         var yScale = d3.scaleLinear()
             .domain([this.minValue, this.maxValue])
             .range([this.innerWidth + this.xAxisPosition - this.scrollbarBreath, 0]);
@@ -2607,16 +2626,16 @@ export class Visual implements IVisual {
         }
     }
 
-    private createLabelsHorizontal(gParent) {
+    private createLabelsHorizontal(gParent: any) {
 
         var g = gParent.append('g').attr('class', 'myBarLabels');
 
 
-        var yPositionHeight = (d, i, nodes) => {
+        var yPositionHeight = (d: any, i: number, nodes: any) => {
             var yPosition
             var nodeID = i;
             var heightAdjustment = 0;
-            pillarLabelsg.each((d, i, nodes) => {
+            pillarLabelsg.each((d: any, i: number, nodes: any) => {
                 if (nodeID == i) {
 
                     heightAdjustment = nodes[i].getBoundingClientRect().height;
@@ -2624,7 +2643,7 @@ export class Visual implements IVisual {
             })
 
 
-            return xScale(d.category) + xScale.step() / 2;
+            return (xScale(d.category) ?? 0) + xScale.step() / 2;
         }
         var xScale = d3.scaleBand()
             .domain(this.barChartData.map(this.xValue))
@@ -2642,25 +2661,25 @@ export class Visual implements IVisual {
                 .append('tspan')
                 .attr('class', 'labels');
 
-            var labelFormatting = d => {
+            var labelFormatting = (d: any) => {
                 return this.formatValueforLabels(d);
                 //return this.formattedValuefromData(d);
             }
 
             var pillarLabelsText = pillarLabels
-                .text(d => labelFormatting(d));
+                .text((d: any) => labelFormatting(d));
 
 
 
 
             pillarLabelsText.style('font-size', this.visualSettings.LabelsFormatting.fontSize + "pt")
                 .style("font-family", this.visualSettings.LabelsFormatting.fontFamily)
-                .style('fill', (d) => {
+                .style('fill', (d: any) => {
                     return d.customFontColor;
                 });
 
             pillarLabelsg
-                .attr('transform', (d, i, nodes) => `translate(${this.yPositionWidth(d, i, nodes, pillarLabelsg)},${yPositionHeight(d, i, nodes)})`);
+                .attr('transform', (d: any, i: number, nodes: any) => `translate(${this.yPositionWidth(d, i, nodes, pillarLabelsg)},${yPositionHeight(d, i, nodes)})`);
 
         }
 
@@ -2668,7 +2687,8 @@ export class Visual implements IVisual {
             .call(this.labelFitToWidthHorizontal, this.width + this.findRightHorizontal - this.scrollbarBreath);
         this.tooltipServiceWrapper.addTooltip(g.selectAll('.labels'),
             (dataPoint: any) => this.getTooltipData(dataPoint),
-            () => null);
+            // no identity-based tooltips here; the util's identity getter is optional
+            () => (null as unknown as ISelectionId));
 
 
 
@@ -2680,11 +2700,11 @@ export class Visual implements IVisual {
 
 
     }
-    private yPositionWidth = (d, i, nodes, pillarLabelsg) => {
+    private yPositionWidth = (d: any, i: number, nodes: any, pillarLabelsg: any) => {
         var yPosition
         var nodeID = i;
         var widthAdjustment = 0;
-        pillarLabelsg.each((d, i, nodes) => {
+        pillarLabelsg.each((d: any, i: number, nodes: any) => {
             if (nodeID == i) {
 
                 widthAdjustment = nodes[i].getBoundingClientRect().width;
@@ -2719,25 +2739,25 @@ export class Visual implements IVisual {
 
         return yPosition;
     }
-    private labelFitToWidthHorizontal(text, rightEdge) {
+    private labelFitToWidthHorizontal(text: any, rightEdge: any) {
 
-        text.each((d, i, nodes) => {
+        text.each((d: any, i: number, nodes: any) => {
             if (nodes[i].getBoundingClientRect().right > rightEdge || nodes[i].getBoundingClientRect().left < 0) {
                 nodes[i].remove();
             }
         });
     }
-    private labelAlignmentHorizontal(tspan, width) {
+    private labelAlignmentHorizontal(tspan: any, width: any) {
         return;
-        tspan.each(function () {
+        tspan.each(function (this: SVGTextContentElement) {
             var tspan = d3.select(this);
-            var tspanWidth = tspan.node().getComputedTextLength();
+            var tspanWidth = tspan.node()!.getComputedTextLength();
             var diff = (width - tspanWidth) / 2;
             tspan.attr('dy', diff);
 
         });
     }
-    private checkBarWidthHorizontal(options) {
+    private checkBarWidthHorizontal(options: any) {
 
         this.visualUpdateOptions = options;
 
@@ -2773,7 +2793,7 @@ export class Visual implements IVisual {
             var scrollbarHeight = (scrollBarGroupHeight) * (scrollBarGroupHeight) / this.innerHeight;
 
 
-            var scrollbar = scrollBarGroup.append('rect')
+            var scrollbar: d3.Selection<any, any, any, any> = scrollBarGroup.append('rect')
                 .attr('width', this.scrollbarBreath)
                 .attr('height', scrollbarHeight)
                 .attr('x', this.width - this.scrollbarBreath - this.margin.left)
@@ -2825,11 +2845,11 @@ export class Visual implements IVisual {
             scrollBarHorizontalDragBar(scrollbar);
         }
     }
-    private createXaxisHorizontal(gParent, options, allDatatemp) {
+    private createXaxisHorizontal(gParent: any, options: any, allDatatemp: any) {
         var g = gParent.append('g').attr('class', 'xAxisParentGroup');
 
         var myAxisParentHeight = 0;
-        var dataView = this.visualUpdateOptions.dataViews[0];
+        const dataView = this.requireMatrixDataView(this.visualUpdateOptions);
         var rows = dataView.matrix.rows;
         var root = rows.root;
         var levels = allDatatemp.length;
@@ -2850,7 +2870,9 @@ export class Visual implements IVisual {
         }
 
         for (var allDataIndex = levels - 1; allDataIndex >= 0; allDataIndex--) {
-            var currData = [];
+            var currData: any[] = [];
+            var xAxisrange: any[] = [];
+            var currChildCount = 0;
 
             if (allDataIndex == (levels - 1)) {
                 xScale = xBaseScale;
@@ -2859,10 +2881,8 @@ export class Visual implements IVisual {
             } else {
 
                 currData = this.getAllMatrixLevelsNew(root, allDataIndex);
-                var xAxisrange = [];
-                var currChildCount = 0
                 xAxisrange.push(0);
-                currData.forEach(element => {
+                currData.forEach((element: any) => {
                     currChildCount = currChildCount + myBandwidth * element.childrenCount;
                     xAxisrange.push(currChildCount);
                 });
@@ -2890,7 +2910,7 @@ export class Visual implements IVisual {
             myAxisParentHeight = this.findRightHorizontal;
         }
 
-        g.selectAll('text').each((d, i, nodes) => {
+        g.selectAll('text').each((d: any, i: number, nodes: any) => {
 
             if (this.xAxisPosition >= nodes[i].getBoundingClientRect().left) {
                 this.xAxisPosition = nodes[i].getBoundingClientRect().left;
@@ -2902,10 +2922,10 @@ export class Visual implements IVisual {
 
 
     }
-    private findRightHorizontal;
+    private findRightHorizontal = 0;
 
 
-    private createAxisHorizontal(myxAxisParent, g, baseAxis: boolean, myWidth, index: number, xScale, xBaseScale, currData, allDataIndex, levels, xAxisrange, myAxisParentHeight) {
+    private createAxisHorizontal(myxAxisParent: any, g: any, baseAxis: boolean, myWidth: any, index: number, xScale: any, xBaseScale: any, currData: any, allDataIndex: any, levels: any, xAxisrange: any, myAxisParentHeight: any) {
         var myxAxisParentx = d3.axisLeft(xScale).tickSize(0);
 
         myxAxisParentx.tickSizeOuter(0);
@@ -2930,7 +2950,7 @@ export class Visual implements IVisual {
                 .selectAll('path').style('fill', 'none').style('stroke', this.visualSettings.yAxisFormatting.gridLineColor);
         }
 
-        var xAxislabels = myxAxisParent.selectAll(".tick text").data(currData).text(d => d.displayName);
+        var xAxislabels = myxAxisParent.selectAll(".tick text").data(currData).text((d: any) => d.displayName);
         if (this.visualType == "drillable" || this.visualType == "staticCategory" || this.visualType == "drillableCategory") {
             xAxislabels.on('click', (event: MouseEvent, d: any) => {
                 // Allow selection only if the visual is rendered in a view that supports interactivity (e.g. Report)
@@ -2941,7 +2961,7 @@ export class Visual implements IVisual {
                     }
                     this.selectionManager
                         .select(d.selectionId, isCtrlPressed)
-                        .then((ids: ISelectionId[]) => {
+                        .then((ids: ISelectionIdBase[]) => {
                             this.syncSelectionState(this.bars, ids);
                         });
                     event.stopPropagation();
@@ -2952,7 +2972,8 @@ export class Visual implements IVisual {
         this.tooltipServiceWrapper.addTooltip(
             myxAxisParent.selectAll(".tick text"),
             (dataPoint: any) => this.getTooltipXaxis(dataPoint),
-            () => null
+            // no identity-based tooltips here; the util's identity getter is optional
+            () => (null as unknown as ISelectionId)
         );
 
 
@@ -2965,7 +2986,7 @@ export class Visual implements IVisual {
             }
 
             myxAxisParent.selectAll(".tick text").data(currData)
-                .attr('transform', (d, i) => `translate(${-this.visualSettings.xAxisFormatting.padding},${(xAxisrange[i + 1] - xAxisrange[i]) / 2
+                .attr('transform', (d: any, i: number) => `translate(${-this.visualSettings.xAxisFormatting.padding},${(xAxisrange[i + 1] - xAxisrange[i]) / 2
                     })`);
 
             myxAxisParent.selectAll("line").remove();
@@ -2977,16 +2998,16 @@ export class Visual implements IVisual {
             xAxislabels.attr('transform', `translate(${-this.visualSettings.xAxisFormatting.padding},0)`);
         }
 
-        myxAxisParent.selectAll("text").each((d, i, nodes) => {
+        myxAxisParent.selectAll("text").each((d: any, i: number, nodes: any) => {
             if (this.findRightHorizontal >= nodes[i].getBoundingClientRect().left) {
                 this.findRightHorizontal = nodes[i].getBoundingClientRect().left;
             };
         });
 
         var maxtextWidth = 0;
-        myxAxisParent.selectAll("text").each(function () {
+        myxAxisParent.selectAll("text").each(function (this: SVGTextContentElement) {
             var text = d3.select(this);
-            var textWidth = text.node().getBoundingClientRect().width;
+            var textWidth = text.node()!.getBoundingClientRect().width;
             if (textWidth > maxtextWidth) {
                 maxtextWidth = textWidth;
             }
@@ -3003,12 +3024,12 @@ export class Visual implements IVisual {
                 .style('fill', 'none')
                 .style('stroke', this.visualSettings.xAxisFormatting.gridLineColor)
                 .style('stroke-width', this.defaultXAxisGridlineStrokeWidth() / 10 + "pt");
-            var myAxisTop = myxAxisParent.select("path").node().getBoundingClientRect().top
+            var myAxisTop = myxAxisParent.select("path").node()!.getBoundingClientRect().top
 
             myxAxisParent.selectAll(".text").data(currData)
                 .enter()
                 .append("line")
-                .attr("y1", (d, i) => {
+                .attr("y1", (d: any, i: number) => {
                     var x1;
                     if (allDataIndex == (levels - 1)) {
                         x1 = xScale(d.category) - (xScale.padding() * xScale.step()) / 2;
@@ -3018,7 +3039,7 @@ export class Visual implements IVisual {
                     return x1;
                 })
                 .attr("x1", 0)
-                .attr("y2", (d, i) => {
+                .attr("y2", (d: any, i: number) => {
                     var x1;
                     if (allDataIndex == (levels - 1)) {
                         x1 = xScale(d.category) - (xScale.padding() * xScale.step()) / 2;
@@ -3028,7 +3049,7 @@ export class Visual implements IVisual {
                     return x1;
                 })
                 .attr("x2", this.findRightHorizontal - myAxisTop)
-                .attr("stroke-width", (d, i) => this.lineWidth(d, i))
+                .attr("stroke-width", (d: any, i: number) => this.lineWidth(d, i))
                 .attr("stroke", this.visualSettings.xAxisFormatting.gridLineColor);
         } else {
             myxAxisParent.selectAll('path')
@@ -3037,17 +3058,17 @@ export class Visual implements IVisual {
                 .style('stroke-width', "0pt");
         }
     }
-    private xAxislabelAlignmentHorizontal(tspan, width) {
+    private xAxislabelAlignmentHorizontal(tspan: any, width: any) {
 
-        tspan.each(function () {
+        tspan.each(function (this: SVGTextContentElement) {
             var tspan = d3.select(this);
-            var tspanWidth = tspan.node().getComputedTextLength();
+            var tspanWidth = tspan.node()!.getComputedTextLength();
             var diff = (tspanWidth - width) / 2;
             tspan.attr('dx', diff);
 
         });
     }
-    private createYAxisHorizontal(gParent, adjustPosition) {
+    private createYAxisHorizontal(gParent: any, adjustPosition: any) {
         var g = gParent.append('g').attr('class', 'yAxisParentGroup');
 
 
@@ -3085,14 +3106,14 @@ export class Visual implements IVisual {
                 yAxis.selectAll('line').style('fill', 'none').style('stroke', this.visualSettings.yAxisFormatting.gridLineColor).style('stroke-width', "0pt");
             }
             if (this.visualSettings.yAxisFormatting.showZeroAxisGridLine) {
-                yAxis.selectAll('line').each((d, i, nodes) => {
+                yAxis.selectAll('line').each((d: any, i: number, nodes: any) => {
                     if (d == 0) {
                         d3.select(nodes[i]).style('fill', 'none').style('stroke', this.visualSettings.yAxisFormatting.zeroLineColor).style('stroke-width', this.visualSettings.yAxisFormatting.zeroLineStrokeWidth / 10 + "pt");
                     }
                 });
             }
             /*if (this.visualSettings.yAxisFormatting.showZeroAxisGridLine) {
-                yAxis.selectAll('line').each((d, i, nodes) => {
+                yAxis.selectAll('line').each((d: any, i: number, nodes: any) => {
 
                     if (d == 0) {
                         d3.select(nodes[i]).style('fill', 'none').style('stroke', this.visualSettings.yAxisFormatting.zeroLineColor).style('stroke-width', this.visualSettings.yAxisFormatting.zeroLineStrokeWidth / 10 + "pt");
@@ -3111,7 +3132,7 @@ export class Visual implements IVisual {
             /*if (this.visualSettings.yAxisFormatting.showGridLine) {
                 yAxis.selectAll('line').style('fill', 'none').style('stroke', this.visualSettings.yAxisFormatting.gridLineColor).style('stroke-width', this.defaultYAxisGridlineStrokeWidth() / 10 + "pt");
             } else if (this.visualSettings.yAxisFormatting.showZeroAxisGridLine) {
-                yAxis.selectAll('line').each((d, i, nodes) => {
+                yAxis.selectAll('line').each((d: any, i: number, nodes: any) => {
 
                     if (d == 0) {
                         d3.select(nodes[i]).style('fill', 'none').style('stroke', this.visualSettings.yAxisFormatting.zeroLineColor).style('stroke-width', this.visualSettings.yAxisFormatting.zeroLineStrokeWidth / 10 + "pt");
@@ -3129,7 +3150,7 @@ export class Visual implements IVisual {
 
 
     }
-    private getYaxisHeightHorizontal(gParent) {
+    private getYaxisHeightHorizontal(gParent: any) {
 
         var g = gParent.append('g').attr('class', 'yAxisParentGroup');
         var yScale = d3.scaleLinear()
@@ -3164,24 +3185,24 @@ export class Visual implements IVisual {
 
             // adjust the left margin of the chart area according to the width of yaxis             
             // yAxisWidth used to adjust the left margin
-            this.yAxisHeightHorizontal = yAxis.node().getBoundingClientRect().height;
+            this.yAxisHeightHorizontal = yAxis.node()!.getBoundingClientRect().height;
 
         }
         g.remove();
     }
 
-    private wrapHorizontal(text, standardwidth) {
+    private wrapHorizontal(text: any, standardwidth: any) {
 
-        var textHeight = text.node().getBoundingClientRect().height;
+        var textHeight = text.node()!.getBoundingClientRect().height;
         var maxHeight = standardwidth * text.datum()["childrenCount"];
         var tspanAllowed = Math.floor(maxHeight / textHeight);
 
-        text.each(function () {
+        text.each(function (this: SVGTextContentElement) {
             var text = d3.select(this),
                 words = text.text().split(/\s+/).reverse(),
                 wordsPerLine = Math.ceil(words.length / tspanAllowed),
                 word,
-                line = [],
+                line: string[] = [],
                 lineNumber = 0,
                 lineHeight = 1.1,
                 y = text.attr("y"),
@@ -3210,12 +3231,12 @@ export class Visual implements IVisual {
     // `nodeValue.objects.general.formatString`; `valueSources[i].format` is only
     // the measure's static model format and is empty for a dynamic-format measure.
     // Requires the `general.formatString` object in capabilities.json and apiVersion >= 4.2.
-    private resolveFormat(nodeValue: any, staticFormat: string): string {
+    private resolveFormat(nodeValue: any, staticFormat: string | undefined): string {
         var dynamic = nodeValue
             && nodeValue.objects
             && nodeValue.objects.general
             && nodeValue.objects.general.formatString;
-        return (typeof dynamic === "string" && dynamic.length > 0) ? dynamic : staticFormat;
+        return (typeof dynamic === "string" && dynamic.length > 0) ? dynamic : (staticFormat ?? "");
     }
     private formatValueforLabels(d: any) {
         return this.formatValueWithUnits(
@@ -3224,7 +3245,7 @@ export class Visual implements IVisual {
             this.visualSettings.LabelsFormatting.valueFormat,
             this.visualSettings.LabelsFormatting.decimalPlaces);
     }
-    private formatValueforvalues(value, numberFormat) {
+    private formatValueforvalues(value: any, numberFormat: any) {
         return this.formatValueWithUnits(
             value,
             numberFormat,
@@ -3312,7 +3333,7 @@ export class Visual implements IVisual {
         }
         if (type["dateTime"]) {
             var currDate = new Date(formattedValue);
-            formattedValue = iValueFormatter_XAxis.format(currDate, format);
+            formattedValue = iValueFormatter_XAxis.format(currDate);
         }
         return formattedValue;
     }

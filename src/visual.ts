@@ -44,6 +44,7 @@ import { requireMatrixDataView } from "./matrix";
 import { WaterfallDataBuilder } from "./waterfallData";
 import { BarInteractions } from "./interactions";
 import { ChartRenderer } from "./chartRenderer";
+import { renderLegend } from "./legend";
 
 /** Best-effort message extraction from an unknown thrown value. */
 function toErrorMessage(e: unknown): string {
@@ -137,7 +138,7 @@ export class Visual implements IVisual {
             labelDecimals: this.visualSettings.LabelsFormatting.decimalPlaces,
         });
         this.chartContainer.selectAll('svg').remove();
-        this.addLegend(options);
+        this.legendHeight = renderLegend(this.legendContainer, this.visualSettings);
         if (dataView.matrix.rows.levels.length != 1){
             this.visualSettings.chartOrientation.limitBreakdown=false;
         }
@@ -197,97 +198,5 @@ export class Visual implements IVisual {
         } catch (e: unknown) {
             this.events.renderingFailed(options, toErrorMessage(e));
         }
-    }
-    private addLegend(options: VisualUpdateOptions) {
-        this.legendContainer.selectAll('svg').remove();
-        if (this.visualSettings.chartOrientation.useSentimentFeatures && this.visualSettings.Legend.show) {
-            //this.legendContainer.attr('width', options.viewport.width);
-            //this.legendContainer.attr('height', 0);
-
-            var circleFavourableSVG = this.legendContainer.append('svg');
-
-            var circleFavourable = circleFavourableSVG.append('circle');
-
-
-            var textFavourableSVG = this.legendContainer.append('svg')
-                /* .attr('width', 10 + "pt")
-                .attr('height', 10 + "pt") */
-                /* .style('margin-left', 2 + "pt")
-                .style('margin-right', 2 + "pt") */;
-            var textFavourable = textFavourableSVG.append('text')
-                .attr("x", 0)
-                .attr("y", "75%")
-                .style('font-size', this.visualSettings.Legend.fontSize + "pt")
-                .text(this.visualSettings.Legend.textFavourable)
-                .style('font-family', this.visualSettings.Legend.fontFamily)
-                .style('fill', this.visualSettings.Legend.fontColor);
-
-            var textBoxSize;
-            var textBoxSizeHeight;
-            var textBoxSizeWidth;
-            textBoxSize = textFavourable.node()!.getBoundingClientRect();
-            textBoxSizeHeight = textBoxSize.height;
-            textBoxSizeWidth = textBoxSize.width;
-            circleFavourableSVG
-                .attr('height', textBoxSizeHeight)
-                .attr('width', textBoxSizeHeight);
-
-            textFavourableSVG
-                .attr('width', textBoxSizeWidth)
-                .attr('height', textBoxSizeHeight);
-
-
-            circleFavourable
-                .attr("r", textBoxSizeHeight / 2 * .6)
-                .attr('cx', textBoxSizeHeight / 2)
-                .attr('cy', textBoxSizeHeight / 2)
-                .attr("fill", this.visualSettings.sentimentColor.sentimentColorFavourable);
-
-            var circleAdverseSVG = this.legendContainer.append('svg');
-
-            var circleAdverse = circleAdverseSVG.append('circle');
-
-            var textAdverseSVG = this.legendContainer.append('svg')
-                /* .attr('width', 10)
-                .attr('height', 10) */
-                /* .style('margin-left', 2 + "pt")
-                .style('margin-right', 2+ "pt") */;
-            var textAdverse = textAdverseSVG.append('text')
-                .attr("x", 0)
-                .attr("y", "75%")
-                .style('font-size', this.visualSettings.Legend.fontSize + "pt")
-                .text(this.visualSettings.Legend.textAdverse)
-                .style('font-family', this.visualSettings.Legend.fontFamily)
-                .style('fill', this.visualSettings.Legend.fontColor);
-
-
-            textBoxSize = textAdverse.node()!.getBoundingClientRect();
-            textBoxSizeHeight = textBoxSize.height;
-            textBoxSizeWidth = textBoxSize.width;
-            circleAdverseSVG
-                .attr('height', textBoxSizeHeight)
-                .attr('width', textBoxSizeHeight);
-
-            textAdverseSVG
-                .attr('width', textBoxSizeWidth)
-                .attr('height', textBoxSizeHeight);
-
-
-            circleAdverse
-                .attr("r", textBoxSizeHeight / 2 * .6)
-                .attr('cx', textBoxSizeHeight / 2)
-                .attr('cy', textBoxSizeHeight / 2)
-                .attr("fill", this.visualSettings.sentimentColor.sentimentColorAdverse);
-            this.legendContainer
-                //.style('width', options.viewport.width)
-                .style('height', textBoxSizeHeight + "pt");
-            this.legendHeight = textBoxSizeHeight;
-        } else {
-            this.legendContainer
-                //.style('width', options.viewport.width)
-                .style('height', 0 + "pt");
-            this.legendHeight = 0;
-        }
-
     }
 }

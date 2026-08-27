@@ -43,11 +43,11 @@ import DataViewMatrixNode = powerbi.DataViewMatrixNode;
 import DataViewMatrix = powerbi.DataViewMatrix;
 import * as d3 from "d3";
 import { valueFormatter } from "powerbi-visuals-utils-formattingutils";
-import VisualTooltipDataItem = powerbi.extensibility.VisualTooltipDataItem;
 import { VisualSettings, VisualFormattingSettingsModel, DEFAULT_GREY } from "./settings";
 import { FormattingSettingsService } from "powerbi-visuals-utils-formattingmodel";
 import { Orientation, OrientationName } from "./orientation";
 import { BarChartDataPoint, createBarChartDataPoint } from "./dataPoint";
+import { buildValueTooltip, buildCategoryTooltip, tooltipSelectionId } from "./tooltip";
 
 /** Best-effort message extraction from an unknown thrown value. */
 function toErrorMessage(e: unknown): string {
@@ -577,7 +577,7 @@ export class Visual implements IVisual {
         }
         o.labelFit(g.selectAll(".labels"), o.name === "Vertical" ? 0 : this.width + this.findRightHorizontal - this.scrollbarBreath);
         this.tooltipServiceWrapper.addTooltip(g.selectAll('.labels'),
-            (dataPoint: any) => this.getTooltipData(dataPoint),
+            (dataPoint: any) => buildValueTooltip(dataPoint),
             // no identity-based tooltips here; the util's identity getter is optional
             () => (null as unknown as ISelectionId));
 
@@ -655,8 +655,8 @@ export class Visual implements IVisual {
         }
 
         this.tooltipServiceWrapper.addTooltip(g.selectAll('rect'),
-            (dataPoint: any) => this.getTooltipData(dataPoint),
-            (dataPoint: any) => this.getTooltipSelectionID(dataPoint));
+            (dataPoint: any) => buildValueTooltip(dataPoint),
+            (dataPoint: any) => tooltipSelectionId(dataPoint));
 
         g.attr('transform', o.scrollableTransform(this.findRightHorizontal, this.margin.top));
 
@@ -788,45 +788,6 @@ export class Visual implements IVisual {
         }
         return defaultwidth;
 
-    }
-    private getTooltipSelectionID(value: any): ISelectionId {
-        return value.selectionId;
-    }
-    private getTooltipData(value: any): VisualTooltipDataItem[] {
-
-        var tooltip: any[] = [];
-        if (value.isPillar == 1) {
-            tooltip = [{
-                displayName: value.toolTipDisplayValue1,
-                value: value.toolTipValue1Formatted
-            }];
-        } else {
-            if (value.toolTipDisplayValue2 == null) {
-                tooltip = [{
-                    displayName: value.toolTipDisplayValue1,
-                    value: value.toolTipValue1Formatted
-                }];
-            } else {
-                tooltip = [{
-                    displayName: value.toolTipDisplayValue1,
-                    value: value.toolTipValue1Formatted,
-                }, {
-                    displayName: value.toolTipDisplayValue2,
-                    value: value.toolTipValue2Formatted
-                }];
-            }
-
-        }
-        return tooltip;
-    }
-    private getTooltipXaxis(value: any): VisualTooltipDataItem[] {
-
-        var tooltip: any[] = [];
-        tooltip = [{
-            displayName: value.displayName,
-        }];
-
-        return tooltip;
     }
     private labelAlignment(tspan: any, width: any) {
 
@@ -1782,7 +1743,7 @@ export class Visual implements IVisual {
             this.wireDataPointSelection(xAxislabels);
         }
         this.tooltipServiceWrapper.addTooltip(myxAxisParent.selectAll(".tick text"),
-            (dataPoint: any) => this.getTooltipXaxis(dataPoint),
+            (dataPoint: any) => buildCategoryTooltip(dataPoint),
             () => (null as unknown as ISelectionId));
         const wrapOpts = o.name === "Vertical"
             ? (this.visualSettings.xAxisFormatting.labelWrapText

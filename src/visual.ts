@@ -574,7 +574,7 @@ export class Visual implements IVisual {
                 .style("font-family", this.visualSettings.yAxisFormatting.fontFamily)
                 .style("color", this.visualSettings.yAxisFormatting.fontColor)
                 .attr('class', 'myYaxis');
-            yAxisScale.tickFormat(d => this.formatValueforYAxis(d));
+            yAxisScale.tickFormat(d => this.formatValueForYAxis(d));
 
             yAxis.call(yAxisScale);
             if (!this.visualSettings.yAxisFormatting.showYAxisValues) {
@@ -629,7 +629,7 @@ export class Visual implements IVisual {
                 .style("color", this.visualSettings.yAxisFormatting.fontColor)
                 .attr('class', 'myYaxis');
 
-            yAxisScale.tickFormat(d => this.formatValueforYAxis(d));
+            yAxisScale.tickFormat(d => this.formatValueForYAxis(d));
 
             yAxis.call(yAxisScale);
 
@@ -2958,7 +2958,7 @@ export class Visual implements IVisual {
                 .style("color", this.visualSettings.yAxisFormatting.fontColor)
                 .attr('class', 'myYaxis');
 
-            yAxisScale.tickFormat(d => this.formatValueforYAxis(d));
+            yAxisScale.tickFormat(d => this.formatValueForYAxis(d));
 
             yAxis.call(yAxisScale);
 
@@ -3005,7 +3005,7 @@ export class Visual implements IVisual {
                 .style("color", this.visualSettings.yAxisFormatting.fontColor)
                 .attr('class', 'myYaxis');
 
-            yAxisScale.tickFormat(d => this.formatValueforYAxis(d));
+            yAxisScale.tickFormat(d => this.formatValueForYAxis(d));
 
             yAxis.call(yAxisScale);
 
@@ -3096,69 +3096,49 @@ export class Visual implements IVisual {
     //    (backward compatible) and a positive value overrides them.
     //  - The format string is kept on "Auto" too, so currency / dynamic-format symbols
     //    survive display-unit scaling. Percentage formats are never abbreviated.
-    private formatValueWithUnits(value: any, format: string, valueFormat: string, precision: number): string {
-        var isPercent = typeof format === "string" && format.indexOf("%") >= 0;
-        var displayValue: number;
-        switch (valueFormat) {
+    private pickDisplayUnit(testValue: number, option: string, isPercent: boolean): number {
+        switch (option) {
             case "Auto":
                 if (isPercent) {
-                    displayValue = 0;
-                } else if (Math.abs(value) >= 1e9) {
-                    displayValue = 1e9;
-                } else if (Math.abs(value) >= 1e6) {
-                    displayValue = 1e6;
-                } else if (Math.abs(value) >= 1e3) {
-                    displayValue = 1e3;
-                } else {
-                    displayValue = 0;
+                    return 0;
+                } else if (testValue >= 1e9) {
+                    return 1e9;
+                } else if (testValue >= 1e6) {
+                    return 1e6;
+                } else if (testValue >= 1e3) {
+                    return 1e3;
                 }
-                break;
-            case "Thousands": displayValue = isPercent ? 0 : 1e3; break;
-            case "Millions": displayValue = isPercent ? 0 : 1e6; break;
-            case "Billions": displayValue = isPercent ? 0 : 1e9; break;
-            default: displayValue = 0; break; // "None"
+                return 0;
+            case "Thousands": return isPercent ? 0 : 1e3;
+            case "Millions": return isPercent ? 0 : 1e6;
+            case "Billions": return isPercent ? 0 : 1e9;
+            default: return 0; // "None"
         }
-        var iValueFormatter = valueFormatter.create({
+    }
+
+    private createFormatter(format: string | undefined, displayValue: number, precision: number) {
+        return valueFormatter.create({
             cultureSelector: this.locale,
             format: format,
             value: displayValue,
             precision: precision > 0 ? precision : undefined
         });
-        return iValueFormatter.format(value);
     }
 
-    private formatValueforYAxis(d: any) {
+    private formatValueWithUnits(value: any, format: string, valueFormat: string, precision: number): string {
+        var isPercent = typeof format === "string" && format.indexOf("%") >= 0;
+        var displayValue = this.pickDisplayUnit(Math.abs(value), valueFormat, isPercent);
+        return this.createFormatter(format, displayValue, precision).format(value);
+    }
+
+    private formatValueForYAxis(d: any) {
         var decimalPlaces = this.visualSettings.yAxisFormatting.decimalPlaces;
         var format = (this.barChartData && this.barChartData.length > 0) ? this.barChartData[0].numberFormat : undefined;
         var isPercent = typeof format === "string" && format.indexOf("%") >= 0;
         var range = Math.max(Math.abs(this.minValue), Math.abs(this.maxValue));
-        var displayValue: number;
-        switch (this.visualSettings.yAxisFormatting.YAxisValueFormatOption) {
-            case "Auto":
-                if (isPercent) {
-                    displayValue = 0;
-                } else if (range >= 1e9) {
-                    displayValue = 1e9;
-                } else if (range >= 1e6) {
-                    displayValue = 1e6;
-                } else if (range >= 1e3) {
-                    displayValue = 1e3;
-                } else {
-                    displayValue = 0;
-                }
-                break;
-            case "Thousands": displayValue = isPercent ? 0 : 1e3; break;
-            case "Millions": displayValue = isPercent ? 0 : 1e6; break;
-            case "Billions": displayValue = isPercent ? 0 : 1e9; break;
-            default: displayValue = 0; break; // "None"
-        }
-        var iValueFormatter = valueFormatter.create({
-            cultureSelector: this.locale,
-            format: format,
-            value: displayValue,
-            precision: decimalPlaces > 0 ? decimalPlaces : undefined
-        });
-        return iValueFormatter.format(d);
+        var option = this.visualSettings.yAxisFormatting.YAxisValueFormatOption;
+        var displayValue = this.pickDisplayUnit(range, option, isPercent);
+        return this.createFormatter(format, displayValue, decimalPlaces).format(d);
     }
     private formatCategory(value: any, type: any, format: any) {
         let iValueFormatter_XAxis;

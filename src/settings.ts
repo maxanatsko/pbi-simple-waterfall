@@ -32,6 +32,7 @@ import { formattingSettings } from "powerbi-visuals-utils-formattingmodel";
 import DataViewObjectsParser = dataViewObjectsParser.DataViewObjectsParser;
 import DataView = powerbi.DataView;
 import VisualEnumerationInstanceKinds = powerbi.VisualEnumerationInstanceKinds;
+import { BarChartDataPoint } from "./visual";
 
 /* ============================================================================
  * Legacy read model
@@ -395,7 +396,7 @@ export class VisualFormattingSettingsModel extends formattingSettings.Model {
   public applyState(
     visualType: string,
     settings: VisualSettings,
-    barChartData: any[],
+    barChartData: BarChartDataPoint[],
     dataView: DataView,
     defaultXAxisGridlineStrokeWidth: number,
     defaultYAxisGridlineStrokeWidth: number
@@ -420,12 +421,12 @@ export class VisualFormattingSettingsModel extends formattingSettings.Model {
     dp.slices = [];
     if (isStatic) {
       for (const d of data) {
-        dp.slices.push(this.perDatapointToggle("pillars", d.category, !!d.isPillar, d.selectionId));
+        dp.slices.push(this.perDatapointToggle("pillars", d.category, !!d.isPillar, d.selectionId!));
       }
     } else if (isStaticCategory) {
       if (!settings.definePillars.Totalpillar) {
         for (const d of data) {
-          dp.slices.push(this.perDatapointToggle("pillars", d.category, !!d.isPillar, d.selectionId));
+          dp.slices.push(this.perDatapointToggle("pillars", d.category, !!d.isPillar, d.selectionId!));
         }
       }
       dp.slices.push(dp.Totalpillar);
@@ -439,7 +440,7 @@ export class VisualFormattingSettingsModel extends formattingSettings.Model {
     if (isStaticLike && !useSentiment) {
       for (const row of barChartData ?? []) {
         if (row.category !== "defaultBreakdownStepOther") {
-          sc.slices.push(fillSlice(row.category, row.customBarColor, row.selectionId));
+          sc.slices.push(fillSlice(row.category, row.customBarColor, row.selectionId!));
         } else {
           sc.slices.push(sc.sentimentColorOther);
         }
@@ -489,7 +490,7 @@ export class VisualFormattingSettingsModel extends formattingSettings.Model {
     } else {
       for (const row of barChartData ?? []) {
         if (row.category !== "defaultBreakdownStepOther") {
-          lf.slices.push(fillSlice(row.category, row.customFontColor, row.selectionId));
+          lf.slices.push(fillSlice(row.category, row.customFontColor, row.selectionId!));
         } else {
           lf.slices.push(lf.sentimentFontColorOther);
         }
@@ -505,7 +506,7 @@ export class VisualFormattingSettingsModel extends formattingSettings.Model {
     } else {
       for (const row of barChartData ?? []) {
         if (row.category !== "defaultBreakdownStepOther") {
-          lf.slices.push(this.perDatapointDropdown("labelPosition", row.category, row.customLabelPositioning, row.selectionId));
+          lf.slices.push(this.perDatapointDropdown("labelPosition", row.category, row.customLabelPositioning, row.selectionId!));
         } else {
           lf.slices.push(lf.labelPositionOther);
         }

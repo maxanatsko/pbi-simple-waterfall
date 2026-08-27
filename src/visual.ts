@@ -41,7 +41,6 @@ import ISelectionIdBase = powerbi.extensibility.ISelectionId;
 import ISelectionManager = powerbi.extensibility.ISelectionManager;
 import DataViewMatrixNode = powerbi.DataViewMatrixNode;
 import DataViewMatrix = powerbi.DataViewMatrix;
-import PrimitiveValue = powerbi.PrimitiveValue;
 import * as d3 from "d3";
 import { valueFormatter } from "powerbi-visuals-utils-formattingutils";
 import VisualTooltipDataItem = powerbi.extensibility.VisualTooltipDataItem;
@@ -53,21 +52,49 @@ function toErrorMessage(e: unknown): string {
     return e instanceof Error ? e.message : String(e);
 }
 
-interface BarChartDataPoint {
-    value: PrimitiveValue;
+export interface BarChartDataPoint {
+    value: number;
     numberFormat: string;
-    formattedValue: string;
     isPillar: number;
     category: string;
-    color: string;
-    customBarColor: string;
-    customFontColor: string;
-    customLabelPositioning: string;
-    selectionId: ISelectionId;
+    displayName: string;
+    selectionId: ISelectionId | null;
     childrenCount: number;
     sortOrderIndex: number;
     sortOrderIndexforLimitBreakdown: number;
-    displayName: string;
+    customBarColor: string;
+    customFontColor: string;
+    customLabelPositioning: string;
+    toolTipValue1Formatted: string;
+    toolTipDisplayValue1: string;
+    toolTipValue2Formatted?: string;
+    toolTipDisplayValue2?: string | null;
+    Measure1Value?: number | null;
+    Measure2Value?: number | null;
+    showbreakdownstep?: boolean;
+    orderIndex?: number;
+    xAxisFormat?: string;
+    type?: any;
+}
+
+/** Build a BarChartDataPoint with safe defaults; converters override per-point fields. */
+function createBarChartDataPoint(): BarChartDataPoint {
+    return {
+        value: 0,
+        numberFormat: "",
+        isPillar: 0,
+        category: "",
+        displayName: "",
+        selectionId: null,
+        childrenCount: 0,
+        sortOrderIndex: 0,
+        sortOrderIndexforLimitBreakdown: 0,
+        customBarColor: "",
+        customFontColor: "",
+        customLabelPositioning: "",
+        toolTipValue1Formatted: "",
+        toolTipDisplayValue1: "",
+    };
 }
 export class Visual implements IVisual {
 
@@ -196,20 +223,20 @@ export class Visual implements IVisual {
             this.visualType = "static";
             this.barChartData = this.getDataStaticWaterfall(options);
 
-            var allData: any[] = [];
+            var allData: BarChartDataPoint[][] = [];
             allData.push(this.barChartData);
 
         } else if (dataView.matrix.rows.levels.length == 1 && dataView.matrix.valueSources.length == 1) {
             this.visualType = "staticCategory";
             this.barChartData = this.getDataStaticCategoryWaterfall(options);
 
-            var allData: any[] = [];
+            var allData: BarChartDataPoint[][] = [];
             allData.push(this.barChartData);
 
 
         } else if (dataView.matrix.rows.levels.length != 1 && dataView.matrix.valueSources.length == 1) {
             this.visualType = "drillableCategory";
-            var allData = this.getDataDrillableCategoryWaterfall(options);
+            var allData: BarChartDataPoint[][] = this.getDataDrillableCategoryWaterfall(options);
             this.barChartData = allData[allData.length - 1];
 
 
@@ -217,7 +244,7 @@ export class Visual implements IVisual {
 
         } else {
             this.visualType = "drillable";
-            var allData = this.getDataDrillableWaterfall(options);
+            var allData: BarChartDataPoint[][] = this.getDataDrillableWaterfall(options);
             this.barChartData = allData[allData.length - 1];
             
 
@@ -472,8 +499,8 @@ export class Visual implements IVisual {
 
     private gridlineStrokeWidth = (axis: "x" | "y"): number =>
         Math.max(1, (axis === "x" ? this.visualSettings.xAxisFormatting : this.visualSettings.yAxisFormatting).gridLineStrokeWidth);
-    private yValue = (d: any) => d.value;
-    private xValue = (d: any) => d.category;
+    private yValue = (d: BarChartDataPoint) => d.value;
+    private xValue = (d: BarChartDataPoint) => d.category;
 
     private getMinMaxValue() {
         if (this.visualSettings.yAxisFormatting.YAxisDataPointOption == "Range"
@@ -1171,7 +1198,7 @@ export class Visual implements IVisual {
     private getDataStaticWaterfall(options: VisualUpdateOptions) {
         const dataView = this.requireMatrixDataView(options);
 
-        var visualData: any[] = [];
+        var visualData: BarChartDataPoint[] = [];
         var sortOrderIndex = 0;
         for (let index = 0; index < dataView.matrix.columns.root.children!.length; index++) {
             dataView.matrix.rows.root.children!.forEach((x: DataViewMatrixNode) => {
@@ -1180,82 +1207,82 @@ export class Visual implements IVisual {
                     checkforZero = true;
                 }
                 if (checkforZero == false) {
-                    var data2: any = [];
-                    data2["value"] = Number(x.values![index].value);
-                    data2["numberFormat"] = this.resolveFormat(x.values![index], dataView.matrix.valueSources[index].format);
-                    data2["selectionId"] = this.host.createSelectionIdBuilder()
+                    var data2 = createBarChartDataPoint();
+                    data2.value = Number(x.values![index].value);
+                    data2.numberFormat = this.resolveFormat(x.values![index], dataView.matrix.valueSources[index].format);
+                    data2.selectionId = this.host.createSelectionIdBuilder()
                         .withMeasure(dataView.matrix.valueSources[index].queryName ?? "")
                         .createSelectionId();
                     var y = dataView.matrix.valueSources[index];
                     if (y.objects) {
                         if (y.objects.definePillars) {
-                            data2["category"] = dataView.matrix.valueSources[index].displayName;
-                            data2["displayName"] = dataView.matrix.valueSources[index].displayName;
+                            data2.category = dataView.matrix.valueSources[index].displayName;
+                            data2.displayName = dataView.matrix.valueSources[index].displayName;
                             if (y.objects["definePillars"]["pillars"]) {
-                                data2["isPillar"] = 1;
+                                data2.isPillar = 1;
                             } else {
-                                data2["isPillar"] = 0;
+                                data2.isPillar = 0;
                             }
                         } else {
 
                             if (dataView.matrix.valueSources[index].displayName.substring(0, 1) != "_") {
-                                data2["isPillar"] = 0;
-                                data2["category"] = dataView.matrix.valueSources[index].displayName;
-                                data2["displayName"] = dataView.matrix.valueSources[index].displayName;
+                                data2.isPillar = 0;
+                                data2.category = dataView.matrix.valueSources[index].displayName;
+                                data2.displayName = dataView.matrix.valueSources[index].displayName;
                             } else {
-                                data2["isPillar"] = 1;
-                                data2["category"] = dataView.matrix.valueSources[index].displayName;
-                                data2["displayName"] = dataView.matrix.valueSources[index].displayName;
+                                data2.isPillar = 1;
+                                data2.category = dataView.matrix.valueSources[index].displayName;
+                                data2.displayName = dataView.matrix.valueSources[index].displayName;
                             }
                         }
                         if (y.objects.sentimentColor && !this.visualSettings.chartOrientation.useSentimentFeatures) {
-                            data2["customBarColor"] = (y.objects as any)["sentimentColor"]["fill"]["solid"]["color"];
+                            data2.customBarColor = (y.objects as any)["sentimentColor"]["fill"]["solid"]["color"];
                         } else {
-                            data2["customBarColor"] = this.getfillColor(data2["isPillar"], data2["value"]);
+                            data2.customBarColor = this.getfillColor(data2.isPillar, data2.value);
                         }
                         if (y.objects.LabelsFormatting && !this.visualSettings.chartOrientation.useSentimentFeatures && !this.visualSettings.LabelsFormatting.useDefaultFontColor) {
                             if (y.objects.LabelsFormatting.fill) {
-                                data2["customFontColor"] = (y.objects as any)["LabelsFormatting"]["fill"]["solid"]["color"];
+                                data2.customFontColor = (y.objects as any)["LabelsFormatting"]["fill"]["solid"]["color"];
                             } else {
-                                data2["customFontColor"] = this.getLabelFontColor(data2["isPillar"], data2["value"]);
+                                data2.customFontColor = this.getLabelFontColor(data2.isPillar, data2.value);
                             }
                         } else {
-                            data2["customFontColor"] = this.getLabelFontColor(data2["isPillar"], data2["value"]);
+                            data2.customFontColor = this.getLabelFontColor(data2.isPillar, data2.value);
                         }
 
                         if (y.objects.LabelsFormatting && !this.visualSettings.chartOrientation.useSentimentFeatures && !this.visualSettings.LabelsFormatting.useDefaultLabelPositioning) {
                             if (y.objects.LabelsFormatting.labelPosition) {
-                                data2["customLabelPositioning"] = y.objects["LabelsFormatting"]["labelPosition"];
+                                data2.customLabelPositioning = y.objects["LabelsFormatting"]["labelPosition"] as string;
                             } else {
-                                data2["customLabelPositioning"] = this.getLabelPosition(data2["isPillar"], data2["value"]);
+                                data2.customLabelPositioning = this.getLabelPosition(data2.isPillar, data2.value);
                             }
                         } else {
-                            data2["customLabelPositioning"] = this.getLabelPosition(data2["isPillar"], data2["value"]);
+                            data2.customLabelPositioning = this.getLabelPosition(data2.isPillar, data2.value);
                         }
                     } else {
 
                         if (dataView.matrix.valueSources[index].displayName.substring(0, 1) != "_") {
-                            data2["isPillar"] = 0;
-                            data2["category"] = dataView.matrix.valueSources[index].displayName;
-                            data2["displayName"] = dataView.matrix.valueSources[index].displayName;
+                            data2.isPillar = 0;
+                            data2.category = dataView.matrix.valueSources[index].displayName;
+                            data2.displayName = dataView.matrix.valueSources[index].displayName;
                         } else {
-                            data2["isPillar"] = 1;
-                            data2["category"] = dataView.matrix.valueSources[index].displayName;
-                            data2["displayName"] = dataView.matrix.valueSources[index].displayName;
+                            data2.isPillar = 1;
+                            data2.category = dataView.matrix.valueSources[index].displayName;
+                            data2.displayName = dataView.matrix.valueSources[index].displayName;
                         }
-                        data2["customBarColor"] = this.getfillColor(data2["isPillar"], data2["value"]);
-                        data2["customFontColor"] = this.getLabelFontColor(data2["isPillar"], data2["value"]);
-                        data2["customLabelPositioning"] = this.getLabelPosition(data2["isPillar"], data2["value"]);
+                        data2.customBarColor = this.getfillColor(data2.isPillar, data2.value);
+                        data2.customFontColor = this.getLabelFontColor(data2.isPillar, data2.value);
+                        data2.customLabelPositioning = this.getLabelPosition(data2.isPillar, data2.value);
                     }
-                    data2["toolTipValue1Formatted"] = this.formatValueforLabels(data2);
-                    data2["toolTipDisplayValue1"] = data2["category"];
-                    data2["childrenCount"] = 1;
-                    if (data2["isPillar"] == 1) {
+                    data2.toolTipValue1Formatted = this.formatValueforLabels(data2);
+                    data2.toolTipDisplayValue1 = data2.category;
+                    data2.childrenCount = 1;
+                    if (data2.isPillar == 1) {
                         sortOrderIndex = sortOrderIndex + 1
-                        data2["sortOrderIndex"] = sortOrderIndex;
+                        data2.sortOrderIndex = sortOrderIndex;
                         sortOrderIndex = sortOrderIndex + 1
                     } else {
-                        data2["sortOrderIndex"] = sortOrderIndex;
+                        data2.sortOrderIndex = sortOrderIndex;
                     }
                     visualData.push(data2);
                 }
@@ -1264,8 +1291,8 @@ export class Visual implements IVisual {
         visualData = this.sortVisualData(visualData, false);
         return visualData;
     }
-    private sortVisualData(visualData: any, drillable: boolean) {
-        visualData.sort((a: any, b: any) => {
+    private sortVisualData(visualData: BarChartDataPoint[], drillable: boolean) {
+        visualData.sort((a: BarChartDataPoint, b: BarChartDataPoint) => {
             switch (this.visualSettings.chartOrientation.sortData) {
                 case 3:
                     if (Math.floor(a.sortOrderIndex) === Math.floor(b.sortOrderIndex)) {
@@ -1286,8 +1313,8 @@ export class Visual implements IVisual {
 
     private getDataDrillableWaterfall(options: VisualUpdateOptions) {
         const dataView = this.requireMatrixDataView(options);
-        var totalData: any[] = [];
-        var visualData: any[] = [];
+        var totalData: BarChartDataPoint[][] = [];
+        var visualData: BarChartDataPoint[] = [];
         var allMeasureValues: any[] = [];
         // find all values and aggregate them in an array of array with each child in an array of a measure
         allMeasureValues = this.findLowestLevels();
@@ -1300,11 +1327,11 @@ export class Visual implements IVisual {
             var toolTipDisplayValue2: string | null = "";
             var Measure1Value: number | null = null;
             var Measure2Value: number | null = null;            
-            var dataPillar: any[] = [];
+            var dataPillar: BarChartDataPoint;
             for (let nodeItems = 0; nodeItems < allMeasureValues[indexMeasures].length; nodeItems++) {
                 totalValueofMeasure = totalValueofMeasure + allMeasureValues[indexMeasures][nodeItems].value
                 if (indexMeasures < allMeasureValues.length - 1) {
-                    var data2Category: any[] = [];
+                    var data2Category: BarChartDataPoint;
                     Measure1Value = +allMeasureValues[indexMeasures][nodeItems].value;
                     Measure2Value = +allMeasureValues[indexMeasures + 1][nodeItems].value;
                     var valueDifference = Measure2Value - Measure1Value;
@@ -1344,13 +1371,13 @@ export class Visual implements IVisual {
         }
         // add arrays to the main array for additional x-axis for each category
         for (let levelItems = 0; levelItems < dataView.matrix.rows.levels.length - 1; levelItems++) {
-            var categorynode: any[] = []
+            var categorynode: BarChartDataPoint[] = []
             var childrenCount = 1;
             var displayNode;
 
             for (let nodeItems = 0; nodeItems < visualData.length; nodeItems++) {
                 var currNode = visualData[nodeItems];
-                var childnode: any = [];
+                var childnode: BarChartDataPoint;
                 var currCategoryText: string = currNode["category"];
                 var currCategoryArray: string[] = currCategoryText.split("|");
                 var newDisplayName = currCategoryArray[levelItems + 1];
@@ -1388,7 +1415,7 @@ export class Visual implements IVisual {
     private getDataStaticCategoryWaterfall(options: VisualUpdateOptions) {
         const dataView = this.requireMatrixDataView(options);
 
-        var visualData: any[] = [];
+        var visualData: BarChartDataPoint[] = [];
         var hasPillar = false;
         //*******************************************************************
         //This will always be zero as it should only have 1 measure
@@ -1402,77 +1429,77 @@ export class Visual implements IVisual {
                 checkforZero = true;
             }
             if (checkforZero == false) {
-                var data2: any = [];
+                var data2 = createBarChartDataPoint();
 
-                data2["value"] = Number(x.values![measureIndex].value);
+                data2.value = Number(x.values![measureIndex].value);
 
-                data2["numberFormat"] = this.resolveFormat(x.values![measureIndex], dataView.matrix.valueSources[measureIndex].format);
-                data2["selectionId"] = this.host.createSelectionIdBuilder()
+                data2.numberFormat = this.resolveFormat(x.values![measureIndex], dataView.matrix.valueSources[measureIndex].format);
+                data2.selectionId = this.host.createSelectionIdBuilder()
                     .withMatrixNode(x, dataView.matrix.rows.levels)
                     .createSelectionId();
-                data2["xAxisFormat"] = dataView.matrix.rows.levels[0].sources[0].format;
-                data2["type"] = dataView.matrix.rows.levels[0].sources[0].type;
-                data2["category"] = this.formatCategory(x.value, data2["type"], data2["xAxisFormat"]);
-                data2["displayName"] = this.formatCategory(x.value, data2["type"], data2["xAxisFormat"]);
+                data2.xAxisFormat = dataView.matrix.rows.levels[0].sources[0].format;
+                data2.type = dataView.matrix.rows.levels[0].sources[0].type;
+                data2.category = this.formatCategory(x.value, data2.type, data2.xAxisFormat);
+                data2.displayName = this.formatCategory(x.value, data2.type, data2.xAxisFormat);
                 if (x.objects) {
                     if (x.objects.definePillars) {
                         if (x.objects["definePillars"]["pillars"]) {
-                            data2["isPillar"] = 1;
+                            data2.isPillar = 1;
                             hasPillar = true;
                         } else {
-                            data2["isPillar"] = 0;
+                            data2.isPillar = 0;
                         }
                     } else {
-                        /* data2["category"] = x.value;
-                        data2["displayName"] = x.value; */
-                        data2["isPillar"] = 0;
+                        /* data2.category = x.value;
+                        data2.displayName = x.value; */
+                        data2.isPillar = 0;
                     }
                     if (x.objects.sentimentColor && !this.visualSettings.chartOrientation.useSentimentFeatures) {
-                        data2["customBarColor"] = (x.objects as any)["sentimentColor"]["fill"]["solid"]["color"];
+                        data2.customBarColor = (x.objects as any)["sentimentColor"]["fill"]["solid"]["color"];
                     } else {
-                        data2["customBarColor"] = this.getfillColor(data2["isPillar"], data2["value"]);
+                        data2.customBarColor = this.getfillColor(data2.isPillar, data2.value);
                     }
                     if (x.objects.LabelsFormatting && !this.visualSettings.LabelsFormatting.useDefaultFontColor) {
                         if (x.objects.LabelsFormatting.fill) {
-                            data2["customFontColor"] = (x.objects as any)["LabelsFormatting"]["fill"]["solid"]["color"];
+                            data2.customFontColor = (x.objects as any)["LabelsFormatting"]["fill"]["solid"]["color"];
                         } else {
-                            data2["customFontColor"] = this.getLabelFontColor(data2["isPillar"], data2["value"]);
+                            data2.customFontColor = this.getLabelFontColor(data2.isPillar, data2.value);
                         }
 
                     } else {
-                        data2["customFontColor"] = this.getLabelFontColor(data2["isPillar"], data2["value"]);
+                        data2.customFontColor = this.getLabelFontColor(data2.isPillar, data2.value);
                     }
 
                     if (x.objects.LabelsFormatting && !this.visualSettings.chartOrientation.useSentimentFeatures && !this.visualSettings.LabelsFormatting.useDefaultLabelPositioning) {
                         if (x.objects.LabelsFormatting.labelPosition) {
-                            data2["customLabelPositioning"] = x.objects["LabelsFormatting"]["labelPosition"];
+                            data2.customLabelPositioning = x.objects["LabelsFormatting"]["labelPosition"] as string;
                         } else {
-                            data2["customLabelPositioning"] = this.getLabelPosition(data2["isPillar"], data2["value"]);
+                            data2.customLabelPositioning = this.getLabelPosition(data2.isPillar, data2.value);
                         }
                     } else {
-                        data2["customLabelPositioning"] = this.getLabelPosition(data2["isPillar"], data2["value"]);
+                        data2.customLabelPositioning = this.getLabelPosition(data2.isPillar, data2.value);
                     }
                 } else {
-                    data2["isPillar"] = 0;
-                    data2["customBarColor"] = this.getfillColor(data2["isPillar"], data2["value"]);
-                    data2["customFontColor"] = this.getLabelFontColor(data2["isPillar"], data2["value"]);
-                    data2["customLabelPositioning"] = this.getLabelPosition(data2["isPillar"], data2["value"]);
+                    data2.isPillar = 0;
+                    data2.customBarColor = this.getfillColor(data2.isPillar, data2.value);
+                    data2.customFontColor = this.getLabelFontColor(data2.isPillar, data2.value);
+                    data2.customLabelPositioning = this.getLabelPosition(data2.isPillar, data2.value);
                 }
-                data2["toolTipValue1Formatted"] = this.formatValueforLabels(data2);
-                data2["toolTipDisplayValue1"] = data2["category"];
-                data2["childrenCount"] = 1;
-                if (data2["isPillar"] == 1) {
+                data2.toolTipValue1Formatted = this.formatValueforLabels(data2);
+                data2.toolTipDisplayValue1 = data2.category;
+                data2.childrenCount = 1;
+                if (data2.isPillar == 1) {
                     sortOrderIndex = Math.round(sortOrderIndex) + 1
-                    data2["sortOrderIndex"] = sortOrderIndex;
-                    data2["sortOrderIndexforLimitBreakdown"] = sortOrderIndex;
+                    data2.sortOrderIndex = sortOrderIndex;
+                    data2.sortOrderIndexforLimitBreakdown = sortOrderIndex;
                     sortOrderIndex = sortOrderIndex + 1
                 } else {
                     sortOrderIndex = sortOrderIndex + + 0.000001;
-                    data2["sortOrderIndex"] = sortOrderIndex ;
-                    data2["sortOrderIndexforLimitBreakdown"] = sortOrderIndex;
+                    data2.sortOrderIndex = sortOrderIndex ;
+                    data2.sortOrderIndexforLimitBreakdown = sortOrderIndex;
                 }
                 orderIndex++;
-                data2["orderIndex"] = orderIndex;
+                data2.orderIndex = orderIndex;
                 visualData.push(data2);
             }
         });
@@ -1565,42 +1592,42 @@ export class Visual implements IVisual {
         //This will always be zero as it should only have 1 measure
         var measureIndex = 0;
         //
-        var data2: any = [];
+        var data2 = createBarChartDataPoint();
 
-        data2["value"] = value;
+        data2.value = value;
 
-        data2["numberFormat"] = dataView.matrix.valueSources[measureIndex].format;
-        data2["selectionId"] = null;
-        data2["xAxisFormat"] = dataView.matrix.rows.levels[0].sources[0].format;
-        data2["type"] = dataView.matrix.rows.levels[0].sources[0].type;
-        data2["category"] = "defaultBreakdownStepOther" + sortOrderIndex;
-        data2["displayName"] = "Other";
-        data2["customBarColor"] = this.visualSettings.sentimentColor.sentimentColorOther;
+        data2.numberFormat = dataView.matrix.valueSources[measureIndex].format ?? "";
+        data2.selectionId = null;
+        data2.xAxisFormat = dataView.matrix.rows.levels[0].sources[0].format;
+        data2.type = dataView.matrix.rows.levels[0].sources[0].type;
+        data2.category = "defaultBreakdownStepOther" + sortOrderIndex;
+        data2.displayName = "Other";
+        data2.customBarColor = this.visualSettings.sentimentColor.sentimentColorOther;
         if (this.visualSettings.LabelsFormatting.useDefaultFontColor) {
-            data2["customFontColor"] = this.visualSettings.LabelsFormatting.fontColor
+            data2.customFontColor = this.visualSettings.LabelsFormatting.fontColor
         } else {
-            data2["customFontColor"] = this.visualSettings.LabelsFormatting.sentimentFontColorOther;
+            data2.customFontColor = this.visualSettings.LabelsFormatting.sentimentFontColorOther;
         }
         if (this.visualSettings.LabelsFormatting.useDefaultLabelPositioning) {
-            data2["customLabelPositioning"] = this.visualSettings.LabelsFormatting.labelPosition
+            data2.customLabelPositioning = this.visualSettings.LabelsFormatting.labelPosition
         } else {
-            data2["customLabelPositioning"] = this.visualSettings.LabelsFormatting.labelPositionOther;
+            data2.customLabelPositioning = this.visualSettings.LabelsFormatting.labelPositionOther;
         }
-        data2["isPillar"] = 0;
-        data2["toolTipValue1Formatted"] = this.formatValueforLabels(data2);
-        data2["toolTipDisplayValue1"] = data2["category"];
-        data2["childrenCount"] = 1;
-        data2["sortOrderIndex"] = sortOrderIndex + 0.999999;
-        data2["sortOrderIndexforLimitBreakdown"] = sortOrderIndexforLimitBreakdown + 0.999999;        
-        data2["showbreakdownstep"] = true;
+        data2.isPillar = 0;
+        data2.toolTipValue1Formatted = this.formatValueforLabels(data2);
+        data2.toolTipDisplayValue1 = data2.category;
+        data2.childrenCount = 1;
+        data2.sortOrderIndex = sortOrderIndex + 0.999999;
+        data2.sortOrderIndexforLimitBreakdown = sortOrderIndexforLimitBreakdown + 0.999999;        
+        data2.showbreakdownstep = true;
         return data2;
 
     }
     private getDataDrillableCategoryWaterfall(options: VisualUpdateOptions) {
 
         const dataView = this.requireMatrixDataView(options);
-        var totalData: any[] = [];
-        var visualData: any[] = [];
+        var totalData: BarChartDataPoint[][] = [];
+        var visualData: BarChartDataPoint[] = [];
         var allMeasureValues: any[] = [];
 
         // find all values and aggregate them in an array of array with each child in an array of a measure        
@@ -1615,7 +1642,7 @@ export class Visual implements IVisual {
         for (let nodeItems = 0; nodeItems < allMeasureValues[indexMeasures].length; nodeItems++) {
             totalValueofMeasure = totalValueofMeasure + allMeasureValues[indexMeasures][nodeItems].value
 
-            var data2Category: any[] = [];
+            var data2Category: BarChartDataPoint;
             Measure1Value = +allMeasureValues[indexMeasures][nodeItems].value;
 
             var valueDifference = Measure1Value;
@@ -1639,13 +1666,13 @@ export class Visual implements IVisual {
 
         // add arrays to the main array for additional x-axis for each category
         for (let levelItems = 0; levelItems < dataView.matrix.rows.levels.length - 1; levelItems++) {
-            var categorynode: any[] = []
+            var categorynode: BarChartDataPoint[] = []
             var childrenCount = 1;
             var displayNode;
 
             for (let nodeItems = 0; nodeItems < visualData.length; nodeItems++) {
                 var currNode = visualData[nodeItems];
-                var childnode: any = [];
+                var childnode: BarChartDataPoint;
                 var currCategoryText: string = currNode["category"];
                 var currCategoryArray: string[] = currCategoryText.split("|");
                 var newDisplayName = currCategoryArray[levelItems + 1];
@@ -1705,9 +1732,9 @@ export class Visual implements IVisual {
                         getChildLevel(child, parentText + "|" + getFormatCategory.formatCategory(child.value, type, format), indexMeasures, false);
                     } else {
 
-                        /* data2["xAxisFormat"] = dataView.matrix.rows.levels[0].sources[0].format;
-                        data2["type"] = dataView.matrix.rows.levels[indexMeasures].sources[0].type;
-                        data2["category"] = this.formatCategory(x.value, data2["type"], data2["xAxisFormat"]); */
+                        /* data2.xAxisFormat = dataView.matrix.rows.levels[0].sources[0].format;
+                        data2.type = dataView.matrix.rows.levels[indexMeasures].sources[0].type;
+                        data2.category = this.formatCategory(x.value, data2.type, data2.xAxisFormat); */
                         var node: any = [];
                         node["value"] = child.values[indexMeasures].value;
                         node["numberFormat"] = getFormatCategory.resolveFormat(child.values[indexMeasures], dataView.matrix.valueSources[indexMeasures].format);
@@ -2033,7 +2060,7 @@ export class Visual implements IVisual {
     }
     private addTotalLine(data: any, options: VisualUpdateOptions) {
         const dataView = this.requireMatrixDataView(options);
-        var data2: any = [];
+        var data2 = createBarChartDataPoint();
         var totalValue = 0;
         var orderIndex = 0;
         //*******************************************************************
@@ -2046,78 +2073,78 @@ export class Visual implements IVisual {
                 orderIndex = element["orderIndex"];
             }
         });
-        data2["value"] = totalValue;
-        data2["orderIndex"] = orderIndex;
-        data2["numberFormat"] = data[0]["numberFormat"];
-        data2["isPillar"] = 1;
-        data2["category"] = dataView.matrix.valueSources[0].displayName;
-        data2["displayName"] = dataView.matrix.valueSources[0].displayName;
+        data2.value = totalValue;
+        data2.orderIndex = orderIndex;
+        data2.numberFormat = data[0]["numberFormat"];
+        data2.isPillar = 1;
+        data2.category = dataView.matrix.valueSources[0].displayName;
+        data2.displayName = dataView.matrix.valueSources[0].displayName;
 
         var x = dataView.matrix.valueSources[measureIndex];
-        data2["selectionId"] = this.host.createSelectionIdBuilder()
+        data2.selectionId = this.host.createSelectionIdBuilder()
             .withMeasure(x.queryName ?? "")
             .createSelectionId();
         if (x.objects) {
             if (x.objects.sentimentColor && !this.visualSettings.chartOrientation.useSentimentFeatures) {
-                data2["customBarColor"] = (x.objects as any)["sentimentColor"]["fill"]["solid"]["color"];
+                data2.customBarColor = (x.objects as any)["sentimentColor"]["fill"]["solid"]["color"];
             } else {
-                data2["customBarColor"] = this.getfillColor(data2["isPillar"], data2["value"]);
+                data2.customBarColor = this.getfillColor(data2.isPillar, data2.value);
             }
 
             if (x.objects.LabelsFormatting && !this.visualSettings.chartOrientation.useSentimentFeatures && !this.visualSettings.LabelsFormatting.useDefaultFontColor) {
                 if (x.objects.LabelsFormatting.fill) {
-                    data2["customFontColor"] = (x.objects as any)["LabelsFormatting"]["fill"]["solid"]["color"];
+                    data2.customFontColor = (x.objects as any)["LabelsFormatting"]["fill"]["solid"]["color"];
                 } else {
-                    data2["customFontColor"] = this.getLabelFontColor(data2["isPillar"], data2["value"]);
+                    data2.customFontColor = this.getLabelFontColor(data2.isPillar, data2.value);
                 }
 
             } else {
-                data2["customFontColor"] = this.getLabelFontColor(data2["isPillar"], data2["value"]);
+                data2.customFontColor = this.getLabelFontColor(data2.isPillar, data2.value);
             }
 
             if (x.objects.LabelsFormatting && !this.visualSettings.LabelsFormatting.useDefaultLabelPositioning) {
                 if (x.objects.LabelsFormatting.labelPosition) {
-                    data2["customLabelPositioning"] = x.objects["LabelsFormatting"]["labelPosition"];
+                    data2.customLabelPositioning = x.objects["LabelsFormatting"]["labelPosition"] as string;
                 } else {
-                    data2["customLabelPositioning"] = this.getLabelPosition(data2["isPillar"], data2["value"]);
+                    data2.customLabelPositioning = this.getLabelPosition(data2.isPillar, data2.value);
                 }
             } else {
-                data2["customLabelPositioning"] = this.getLabelPosition(data2["isPillar"], data2["value"]);
+                data2.customLabelPositioning = this.getLabelPosition(data2.isPillar, data2.value);
             }
         } else {
-            data2["customBarColor"] = this.getfillColor(data2["isPillar"], data2["value"]);
-            data2["customFontColor"] = this.getLabelFontColor(data2["isPillar"], data2["value"]);
-            data2["customLabelPositioning"] = this.getLabelPosition(data2["isPillar"], data2["value"]);
+            data2.customBarColor = this.getfillColor(data2.isPillar, data2.value);
+            data2.customFontColor = this.getLabelFontColor(data2.isPillar, data2.value);
+            data2.customLabelPositioning = this.getLabelPosition(data2.isPillar, data2.value);
         }
 
-        data2["toolTipValue1Formatted"] = this.formatValueforLabels(data2);
-        data2["toolTipDisplayValue1"] = data2["category"];
-        data2["childrenCount"] = 1;
-        data2["sortOrderIndex"] = 1;
-        data2["sortOrderIndexforLimitBreakdown"] = 1;        
+        data2.toolTipValue1Formatted = this.formatValueforLabels(data2);
+        data2.toolTipDisplayValue1 = data2.category;
+        data2.childrenCount = 1;
+        data2.sortOrderIndex = 1;
+        data2.sortOrderIndexforLimitBreakdown = 1;        
         return data2;
     }
-    private getDataForCategory(value: number, numberFormat: string, displayName: any, displayID: any, isPillar: number, selectionId: any, sortOrderIndex: number, childrenCount: number, toolTipDisplayValue1: string, toolTipDisplayValue2: string | null, Measure1Value: number | null, Measure2Value: number | null) {
+    private getDataForCategory(value: number, numberFormat: string, displayName: string, displayID: string, isPillar: number, selectionId: ISelectionId | null, sortOrderIndex: number, childrenCount: number, toolTipDisplayValue1: string, toolTipDisplayValue2: string | null | undefined, Measure1Value: number | null | undefined, Measure2Value: number | null | undefined): BarChartDataPoint {
 
-        var data2: any = [];
-        data2["value"] = value;
-        data2["numberFormat"] = numberFormat;
-        data2["isPillar"] = isPillar;
-        data2["category"] = displayID;
-        data2["displayName"] = displayName;
-        data2["selectionId"] = selectionId;
-        data2["sortOrderIndex"] = sortOrderIndex;
-        data2["sortOrderIndexforLimitBreakdown"] = sortOrderIndex;
-        data2["childrenCount"] = childrenCount;
-        data2["Measure1Value"] = Measure1Value;
-        data2["Measure2Value"] = Measure2Value;
-        data2["toolTipValue1Formatted"] = this.formatValueforvalues(Measure1Value, numberFormat);
-        data2["toolTipValue2Formatted"] = this.formatValueforvalues(Measure2Value, numberFormat);
-        data2["toolTipDisplayValue1"] = toolTipDisplayValue1;
-        data2["toolTipDisplayValue2"] = toolTipDisplayValue2;
-        data2["customBarColor"] = this.getfillColor(data2["isPillar"], data2["value"]);
-        data2["customFontColor"] = this.getLabelFontColor(data2["isPillar"], data2["value"]);
-        data2["customLabelPositioning"] = this.getLabelPosition(data2["isPillar"], data2["value"]);
+        var data2 = createBarChartDataPoint();
+        data2.value = value;
+        data2.numberFormat = numberFormat;
+        data2.isPillar = isPillar;
+        data2.category = displayID;
+        data2.displayName = displayName;
+        data2.selectionId = selectionId;
+        data2.sortOrderIndex = sortOrderIndex;
+        data2.sortOrderIndexforLimitBreakdown = sortOrderIndex;
+        data2.childrenCount = childrenCount;
+        data2.Measure1Value = Measure1Value;
+        data2.Measure2Value = Measure2Value;
+        data2.toolTipValue1Formatted = this.formatValueforvalues(Measure1Value, numberFormat);
+        data2.toolTipValue2Formatted = this.formatValueforvalues(Measure2Value, numberFormat);
+        data2.toolTipDisplayValue1 = toolTipDisplayValue1;
+        data2.toolTipDisplayValue2 = toolTipDisplayValue2;
+        data2.customBarColor = this.getfillColor(data2.isPillar, data2.value);
+        data2.customFontColor = this.getLabelFontColor(data2.isPillar, data2.value);
+        data2.customLabelPositioning = this.getLabelPosition(data2.isPillar, data2.value);
         return data2;
     }
 
@@ -3047,7 +3074,7 @@ export class Visual implements IVisual {
             && nodeValue.objects.general.formatString;
         return (typeof dynamic === "string" && dynamic.length > 0) ? dynamic : (staticFormat ?? "");
     }
-    private formatValueforLabels(d: any) {
+    private formatValueforLabels(d: BarChartDataPoint) {
         return this.formatValueWithUnits(
             d.value,
             d.numberFormat,

@@ -81,6 +81,11 @@ export class BarInteractions {
         });
     }
 
+    /** Re-apply the current selection to a freshly drawn bar series. */
+    public resyncOnRedraw(bars: any): void {
+        this.syncSelectionState(bars, this.deps.selectionManager.getSelectionIds() as ISelectionIdBase[]);
+    }
+
     public syncSelectionState(bars: any, selectionIds: ISelectionIdBase[]): void {
         if (!bars) {
             return;

@@ -51,8 +51,13 @@ the authoritative version is in [`pbiviz.json`](pbiviz.json).
   between the current `powerbi-visuals-webpack-plugin` localisation loader and
   the ESM `powerbiGlobalizeLocales.js` in `powerbi-visuals-utils-formattingutils`
   7. This bundles all locale strings rather than only `en-US`.
-- `webpack` is pinned to `5.105.4` via `overrides`. Later 5.10x releases crash
-  `pbiviz package` in a post-build logging hook (`No such label 'emitAssets'`).
+- `webpack` is pinned to `5.105.4` via `overrides`, and `npm run package` goes
+  through `scripts/package.mjs`. `powerbi-visuals-tools` 7.2.x with webpack 5.10x
+  intermittently crashes in a post-build logging hook
+  (`No such label 'emitAssets'`) *after* the `.pbiviz` is written and the build
+  reports success — a webpack `needAdditionalPass` timer race. The wrapper treats
+  a completed build with a fresh `dist/*.pbiviz` as success and still fails on
+  any real build error.
 
 ## Earlier maintainership changes (pre-3.0.0.0)
 

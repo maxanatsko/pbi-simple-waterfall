@@ -27,7 +27,7 @@ jobs:
       # Generates a throwaway self-signed cert; pbiviz prints a cert status line on start.
       - run: npx pbiviz --install-cert
 
-      - run: npx pbiviz package --all-locales
+      - run: npm run package
 
       - uses: actions/upload-artifact@v4
         with:

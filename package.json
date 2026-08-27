@@ -21,7 +21,7 @@
     "scripts": {
         "pbiviz": "pbiviz",
         "start": "pbiviz start --all-locales",
-        "package": "pbiviz package --all-locales",
+        "package": "node scripts/package.mjs",
         "lint": "eslint src test",
         "test": "vitest run",
         "npmVersion": "npm list --depth=0"

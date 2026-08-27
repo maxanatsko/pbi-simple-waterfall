@@ -6,16 +6,16 @@
         "visualClassName": "Visual",
         "version": "2.0.10.4",
         "description": "A simple waterfall allowing users to create multi step waterfall",
-        "supportUrl": "https://nishantjain.co.uk/simple-waterfall-support/",
-        "gitHubUrl": ""
+        "supportUrl": "https://maxanatsko.com",
+        "gitHubUrl": "https://github.com/maxanatsko/pbi-simple-waterfall"
     },
     "apiVersion": "4.2.0",
     "author": {
-        "name": "Nishant Jain",
-        "email": "nishant@datanomy.uk"
+        "name": "Maxim Anatsko",
+        "email": "max@maxanatsko.com"
     },
     "assets": {
-        "icon": "assets/icon-visual.png"
+        "icon": "assets/icon.png"
     },
     "externalJS": null,
     "style": "style/visual.less",

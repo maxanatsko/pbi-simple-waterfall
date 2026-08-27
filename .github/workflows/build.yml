@@ -1,0 +1,32 @@
+name: build
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run lint
+
+      # Generates a throwaway self-signed cert; pbiviz prints a cert status line on start.
+      - run: npx pbiviz --install-cert
+
+      - run: npx pbiviz package
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pbiviz-package
+          path: dist/*.pbiviz
+          if-no-files-found: error

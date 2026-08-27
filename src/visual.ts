@@ -40,7 +40,6 @@ import ISelectionId = powerbi.visuals.ISelectionId;
 import ISelectionIdBase = powerbi.extensibility.ISelectionId;
 import ISelectionManager = powerbi.extensibility.ISelectionManager;
 import DataViewMatrixNode = powerbi.DataViewMatrixNode;
-import DataViewMatrix = powerbi.DataViewMatrix;
 import * as d3 from "d3";
 import { VisualSettings, VisualFormattingSettingsModel, DEFAULT_GREY } from "./settings";
 import { FormattingSettingsService } from "powerbi-visuals-utils-formattingmodel";
@@ -48,6 +47,7 @@ import { Orientation, OrientationName } from "./orientation";
 import { BarChartDataPoint, createBarChartDataPoint } from "./dataPoint";
 import { buildValueTooltip, buildCategoryTooltip, tooltipSelectionId } from "./tooltip";
 import { ValueFormatter, gridlineStrokeWidth, resolveFormat } from "./valueFormatting";
+import { requireMatrixDataView, findLowestLevels, getMatrixLevelsAt } from "./matrix";
 
 /** Best-effort message extraction from an unknown thrown value. */
 function toErrorMessage(e: unknown): string {
@@ -136,19 +136,6 @@ export class Visual implements IVisual {
         return <VisualSettings>VisualSettings.parse(dataView);
     }
 
-    /**
-     * Returns the first dataView with its `matrix` proven non-null. Every data
-     * converter needs the matrix; `update()` runs inside a try/catch that reports
-     * `renderingFailed`, so throwing here is the intended "no data" path.
-     */
-    private requireMatrixDataView(options: VisualUpdateOptions): DataView & { matrix: DataViewMatrix } {
-        const dataView = options && options.dataViews && options.dataViews[0];
-        if (!dataView || !dataView.matrix) {
-            throw new Error("Multi-Step Waterfall: a matrix dataView is required.");
-        }
-        return dataView as DataView & { matrix: DataViewMatrix };
-    }
-
     public getFormattingModel(): powerbi.visuals.FormattingModel {
         const dataView: DataView = this.visualUpdateOptions && this.visualUpdateOptions.dataViews && this.visualUpdateOptions.dataViews[0];
         const model: VisualFormattingSettingsModel =
@@ -170,7 +157,7 @@ export class Visual implements IVisual {
         try {
         this.visualUpdateOptions = options;
         this.isHighContrast = this.colorPalette.isHighContrast;
-        const dataView = this.requireMatrixDataView(options);
+        const dataView = requireMatrixDataView(options);
         this.visualSettings = Visual.parseSettings(options && options.dataViews && options.dataViews[0]);
         this.formatter = new ValueFormatter({
             locale: this.locale,
@@ -953,7 +940,7 @@ export class Visual implements IVisual {
         }
     }
     private getDataStaticWaterfall(options: VisualUpdateOptions) {
-        const dataView = this.requireMatrixDataView(options);
+        const dataView = requireMatrixDataView(options);
 
         var visualData: BarChartDataPoint[] = [];
         var sortOrderIndex = 0;
@@ -1044,12 +1031,12 @@ export class Visual implements IVisual {
     }
 
     private getDataDrillableWaterfall(options: VisualUpdateOptions) {
-        const dataView = this.requireMatrixDataView(options);
+        const dataView = requireMatrixDataView(options);
         var totalData: BarChartDataPoint[][] = [];
         var visualData: BarChartDataPoint[] = [];
         var allMeasureValues: any[] = [];
         // find all values and aggregate them in an array of array with each child in an array of a measure
-        allMeasureValues = this.findLowestLevels();
+        allMeasureValues = findLowestLevels(dataView, this.host, this.formatter);
         var sortOrderPrecision = Math.pow(10, allMeasureValues.length * allMeasureValues[0].length.toString().length);
         var sortOrderIndex = 1;
         // calculate the difference between each measure and add them to an array as the step bars and then add the pillar bars [visualData]
@@ -1145,7 +1132,7 @@ export class Visual implements IVisual {
     }
 
     private getDataStaticCategoryWaterfall(options: VisualUpdateOptions) {
-        const dataView = this.requireMatrixDataView(options);
+        const dataView = requireMatrixDataView(options);
 
         var visualData: BarChartDataPoint[] = [];
         var hasPillar = false;
@@ -1293,7 +1280,7 @@ export class Visual implements IVisual {
     }
     private addOtherBreakdownStep(options: VisualUpdateOptions, value: any, sortOrderIndex: any, sortOrderIndexforLimitBreakdown: any, otherbreakdownstepCount: any) {
         //*******************Add "Other" breakdown item *********************
-        const dataView = this.requireMatrixDataView(options);
+        const dataView = requireMatrixDataView(options);
         //*******************************************************************
         //This will always be zero as it should only have 1 measure
         var measureIndex = 0;
@@ -1331,13 +1318,13 @@ export class Visual implements IVisual {
     }
     private getDataDrillableCategoryWaterfall(options: VisualUpdateOptions) {
 
-        const dataView = this.requireMatrixDataView(options);
+        const dataView = requireMatrixDataView(options);
         var totalData: BarChartDataPoint[][] = [];
         var visualData: BarChartDataPoint[] = [];
         var allMeasureValues: any[] = [];
 
         // find all values and aggregate them in an array of array with each child in an array of a measure        
-        allMeasureValues = this.findLowestLevels();
+        allMeasureValues = findLowestLevels(dataView, this.host, this.formatter);
         var sortOrderPrecision = Math.pow(10, allMeasureValues.length * allMeasureValues[0].length.toString().length);
 
         // calculate the difference between each measure and add them to an array as the step bars and then add the pillar bars [visualData]
@@ -1413,150 +1400,6 @@ export class Visual implements IVisual {
         // final array that contains all the values as the last array, while all the other array are only for additional x-axis
         totalData.push(visualData);
         return totalData;
-
-    }
-    private findLowestLevels() {
-
-        function getChildLevel(currentNode: any, parentText: string, indexMeasures: any, rootnode: boolean) {
-
-            if (currentNode.children.length != undefined) {
-                currentNode.children.forEach((child: any) => {
-                    if (rootnode) {
-                        parentNodes.length = 0;
-                    }
-                    var format = dataView.matrix.rows.levels[child.level].sources[0].format;
-                    var type = dataView.matrix.rows.levels[child.level].sources[0].type;
-                    if (child.children != undefined) {
-                        childrenCount = childrenCount + 1
-
-                        /* if (currentNode == root) {
-                            //selectionNode = host1.createSelectionIdBuilder().withMatrixNode(child, rows.levels)
-                        } else {
-                            
-                        } */
-                        parentNodes.push(child);
-                        getChildLevel(child, parentText + "|" + getFormatCategory.formatCategory(child.value, type, format), indexMeasures, false);
-                    } else {
-
-                        /* data2.xAxisFormat = dataView.matrix.rows.levels[0].sources[0].format;
-                        data2.type = dataView.matrix.rows.levels[indexMeasures].sources[0].type;
-                        data2.category = this.formatCategory(x.value, data2.type, data2.xAxisFormat); */
-                        var node: any = [];
-                        node["value"] = child.values[indexMeasures].value;
-                        node["numberFormat"] = getFormatCategory.resolveFormat(child.values[indexMeasures], dataView.matrix.valueSources[indexMeasures].format);
-                        node["category"] = (parentText + "|" + getFormatCategory.formatCategory(child.value, type, format)).replace("null", "(blank)");
-                        if (child.value == null) {
-                            node["displayName"] = "(blank)";
-                        } else {
-                            node["displayName"] = getFormatCategory.formatCategory(child.value, type, format);
-                            //node["displayName"] = this.formatCategory(child.value, node["type"], node["xAxisFormat"]);
-                        }
-
-                        var selectionbuilder = host1.createSelectionIdBuilder();
-                        var selectionnode: any = host1.createSelectionIdBuilder();
-                        if (parentNodes.length > 0) {
-                            parentNodes.forEach(nodes => {
-                                selectionnode = selectionbuilder.withMatrixNode(nodes, rows.levels)
-                            });
-                        } else {
-                            selectionnode = host1.createSelectionIdBuilder();
-                        }
-                        var selectionId: ISelectionId = selectionnode.withMatrixNode(child, rows.levels).createSelectionId();
-                        node["selectionId"] = selectionId;
-                        nodes.push(node);
-
-                    };
-                });
-            }
-        };
-        const dataView = this.requireMatrixDataView(this.visualUpdateOptions);
-        var rows = dataView.matrix.rows;
-        var root = rows.root;
-        var allNodes: any[] = [];
-        var childrenCount = 0;
-        var host1 = this.host;
-        var getFormatCategory = this;
-        var parentNodes: any[] = [];
-        for (let indexMeasures = 0; indexMeasures < dataView.matrix.valueSources.length; indexMeasures++) {
-            var nodes: any[] = [];
-            getChildLevel(root, "", indexMeasures, true);
-            allNodes.push(nodes);
-        }
-        return allNodes;
-
-    }
-    private getMatrixLevelsAt(root: any, num: any) {
-
-        function getChildLevel(currentNode: any, parentText: string) {
-            if (currentNode.children.length != undefined) {
-
-                currentNode.children.forEach((child: any) => {
-                    if (index == num) {
-                        mainNode.push(createNode(child));
-                    } else {
-
-                        index = index + 1;
-                        if (child.children != undefined) {
-
-                            getChildLevel(child, parentText + "|" + child.value);
-                        };
-                        index = index - 1;
-                    }
-
-                });
-
-            }
-
-        };
-        function createNode(child: any) {
-            var node: any = [];
-            if (child.children == undefined) {
-                for (let indexMeasures = 0; indexMeasures < dataView.matrix.valueSources.length; indexMeasures++) {
-                    var nodeValue: any[] = [];
-                    nodeValue = child.values[indexMeasures].value;
-                    node.push(nodeValue);
-                }
-            } else {
-                counter = 0;
-                countChildrens(child);
-                node["childrenCount"] = counter;
-
-            }
-            var format = dataView.matrix.rows.levels[num].sources[0].format;
-            var type = dataView.matrix.rows.levels[num].sources[0].type;
-            if (child.value == null) {
-                node["category"] = "(blank)";
-                node["displayName"] = "(blank)";
-            } else {
-                node["category"] = getFormatCategory.formatCategory(child.value, type, format);
-                node["displayName"] = getFormatCategory.formatCategory(child.value, type, format);
-            }
-
-            var selectionId: ISelectionId = host1.createSelectionIdBuilder()
-                .withMatrixNode(child, rows.levels)
-                .createSelectionId();
-            node["selectionId"] = selectionId;
-            return node;
-        }
-        function countChildrens(child: any) {
-            if (child.children == undefined) {
-                counter = counter + 1;
-            } else {
-                child.children.forEach((element: any) => {
-                    countChildrens(element)
-                });
-            }
-
-        }
-        var counter = 0;
-        var index = 0;
-        var host1 = this.host
-        var getFormatCategory = this;
-        var mainNode: any[] = [];
-        const dataView = this.requireMatrixDataView(this.visualUpdateOptions);
-        var rows = dataView.matrix.rows;
-        getChildLevel(root, "");
-        return mainNode;
 
     }
     private findBottom = 0;
@@ -1659,7 +1502,7 @@ export class Visual implements IVisual {
         const o = this.orientation;
         var g = gParent.append('g').attr('class', 'xAxisParentGroup');
         var myAxisParentHeight = 0;
-        const dataView = this.requireMatrixDataView(this.visualUpdateOptions);
+        const dataView = requireMatrixDataView(this.visualUpdateOptions);
         var rows = dataView.matrix.rows;
         var root = rows.root;
         var levels = allDatatemp.length;
@@ -1686,7 +1529,7 @@ export class Visual implements IVisual {
                 xScale = xBaseScale;
                 currData = allDatatemp[allDatatemp.length - 1];
             } else {
-                currData = this.getMatrixLevelsAt(root, allDataIndex);
+                currData = getMatrixLevelsAt(root, allDataIndex, dataView, this.host, this.formatter);
                 xAxisrange.push(0);
                 currData.forEach((element: any) => {
                     currChildCount = currChildCount + myBandwidth * element.childrenCount;
@@ -1815,7 +1658,7 @@ export class Visual implements IVisual {
     }
 
     private addTotalLine(data: any, options: VisualUpdateOptions) {
-        const dataView = this.requireMatrixDataView(options);
+        const dataView = requireMatrixDataView(options);
         var data2 = createBarChartDataPoint();
         var totalValue = 0;
         var orderIndex = 0;

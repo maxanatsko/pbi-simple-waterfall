@@ -359,7 +359,8 @@ class LabelsCard extends formattingSettings.SimpleCard {
 
 function fillSlice(displayName: string, value: string, selectionId: powerbi.visuals.ISelectionId): formattingSettings.ColorPicker {
   const slice = new formattingSettings.ColorPicker({ name: "fill", displayName, value: { value } });
-  slice.selector = dataViewWildcard.createDataViewWildcardSelector(dataViewWildcard.DataViewWildcardMatchingOption.InstancesAndTotals);
+  // 0 === DataViewWildcardMatchingOption.InstancesAndTotals (const enum; also the util's own default)
+  slice.selector = dataViewWildcard.createDataViewWildcardSelector(0);
   slice.altConstantSelector = selectionId.getSelector();
   slice.instanceKind = VisualEnumerationInstanceKinds.ConstantOrRule;
   return slice;

@@ -42,6 +42,7 @@ import ISelectionIdBase = powerbi.extensibility.ISelectionId;
 import ISelectionManager = powerbi.extensibility.ISelectionManager;
 import DataViewHierarchyLevel = powerbi.DataViewHierarchyLevel;
 import DataViewMatrixNode = powerbi.DataViewMatrixNode;
+import DataViewMatrix = powerbi.DataViewMatrix;
 import DataViewCategoryColumn = powerbi.DataViewCategoryColumn;
 import DataViewObject = powerbi.DataViewObject;
 import PrimitiveValue = powerbi.PrimitiveValue;
@@ -81,48 +82,53 @@ interface BarChartDataPoint {
 }
 export class Visual implements IVisual {
 
-    private svg: d3.Selection<any, any, any, any>;
-    private svgYAxis: d3.Selection<any, any, any, any>;
+    private svg!: d3.Selection<any, any, any, any>;
+    private svgYAxis!: d3.Selection<any, any, any, any>;
     private mainContainer: d3.Selection<any, any, any, any>;
     private legendContainer: d3.Selection<any, any, any, any>;
     private chartContainer: d3.Selection<any, any, any, any>;
-    private gScrollable: d3.Selection<any, any, any, any>;
-    private visualSettings: VisualSettings;
+    private gScrollable!: d3.Selection<any, any, any, any>;
+    private visualSettings!: VisualSettings;
     private formattingSettingsService: FormattingSettingsService;
     private adjustmentConstant: number;
-    private minValue: number;
-    private maxValue: number;
-    private originalwidth: number;
-    private originalheight: number;
-    private width: number;
-    private height: number;
-    private innerWidth: number;
-    private innerHeight: number;
-    private barChartData: BarChartDataPoint[];
-    private barChartDataAll = [];
+    private minValue!: number;
+    private maxValue!: number;
+    private originalwidth!: number;
+    private originalheight!: number;
+    private width!: number;
+    private height!: number;
+    private innerWidth!: number;
+    private innerHeight!: number;
+    private barChartData!: BarChartDataPoint[];
+    private barChartDataAll: any[] = [];
     private margin;
     private legendHeight;
     private host: IVisualHost;
     private selectionIdBuilder: ISelectionIdBuilder;
     private selectionManager: ISelectionManager;
     private tooltipServiceWrapper: ITooltipServiceWrapper;
-    private visualType: string;
-    private visualUpdateOptions: VisualUpdateOptions;
-    private bars: d3.Selection<d3.BaseType, any, d3.BaseType, any>;
+    private visualType!: string;
+    private visualUpdateOptions!: VisualUpdateOptions;
+    private bars!: d3.Selection<d3.BaseType, any, d3.BaseType, any>;
     private xAxisPosition = 0;
     private yAxisWidth = 0;
     private yAxisHeightHorizontal = 0;
     private scrollbarBreath = 0;
-    private yScaleTickValues = [];
+    private yScaleTickValues: number[] = [];
     private events: IVisualEventService;
     private locale: string;
-    private allowInteractions: boolean;
+    private allowInteractions!: boolean;
     private colorPalette: powerbi.extensibility.ISandboxExtendedColorPalette;
     private isHighContrast: boolean;
 
 
 
-    constructor(options: VisualConstructorOptions) {
+    constructor(options?: VisualConstructorOptions) {
+        // The pbiviz-generated plugin shim calls `new Visual(options?)`; the real
+        // Power BI host always supplies them.
+        if (!options) {
+            throw new Error("Multi-Step Waterfall: VisualConstructorOptions are required.");
+        }
         this.host = options.host;
         this.mainContainer = d3.select<HTMLElement, any>(options.element)
             .append('div')
@@ -156,6 +162,19 @@ export class Visual implements IVisual {
         return <VisualSettings>VisualSettings.parse(dataView);
     }
 
+    /**
+     * Returns the first dataView with its `matrix` proven non-null. Every data
+     * converter needs the matrix; `update()` runs inside a try/catch that reports
+     * `renderingFailed`, so throwing here is the intended "no data" path.
+     */
+    private requireMatrixDataView(options: VisualUpdateOptions): DataView & { matrix: DataViewMatrix } {
+        const dataView = options && options.dataViews && options.dataViews[0];
+        if (!dataView || !dataView.matrix) {
+            throw new Error("Multi-Step Waterfall: a matrix dataView is required.");
+        }
+        return dataView as DataView & { matrix: DataViewMatrix };
+    }
+
     public getFormattingModel(): powerbi.visuals.FormattingModel {
         const dataView: DataView = this.visualUpdateOptions && this.visualUpdateOptions.dataViews && this.visualUpdateOptions.dataViews[0];
         const model: VisualFormattingSettingsModel =
@@ -177,7 +196,7 @@ export class Visual implements IVisual {
         try {
         this.visualUpdateOptions = options;
         this.isHighContrast = this.colorPalette.isHighContrast;
-        var dataView: DataView = options.dataViews[0];
+        const dataView = this.requireMatrixDataView(options);
         this.visualSettings = Visual.parseSettings(options && options.dataViews && options.dataViews[0]);
         this.chartContainer.selectAll('svg').remove();
         this.addLegend(options);
@@ -191,7 +210,7 @@ export class Visual implements IVisual {
             this.visualType = "static";
             this.barChartData = this.getDataStaticWaterfall(options);
 
-            var allData = [];
+            var allData: any[] = [];
             allData.push(this.barChartData);
 
         } else if (dataView.matrix.rows.levels.length == 1 && dataView.matrix.valueSources.length == 1) {
@@ -204,7 +223,7 @@ export class Visual implements IVisual {
             }*/
             this.barChartData = this.getDataStaticCategoryWaterfall(options);
 
-            var allData = [];
+            var allData: any[] = [];
             allData.push(this.barChartData);
 
 
@@ -268,7 +287,7 @@ export class Visual implements IVisual {
             var textBoxSize;
             var textBoxSizeHeight;
             var textBoxSizeWidth;
-            textBoxSize = textFavourable.node().getBoundingClientRect();
+            textBoxSize = textFavourable.node()!.getBoundingClientRect();
             textBoxSizeHeight = textBoxSize.height;
             textBoxSizeWidth = textBoxSize.width;
             circleFavourableSVG
@@ -304,7 +323,7 @@ export class Visual implements IVisual {
                 .style('fill', this.visualSettings.Legend.fontColor);
 
 
-            textBoxSize = textAdverse.node().getBoundingClientRect();
+            textBoxSize = textAdverse.node()!.getBoundingClientRect();
             textBoxSizeHeight = textBoxSize.height;
             textBoxSizeWidth = textBoxSize.width;
             circleAdverseSVG
@@ -352,7 +371,7 @@ export class Visual implements IVisual {
         this.svg.on('contextmenu', (event: MouseEvent) => {
 
             const mouseEvent: MouseEvent = event;
-            const eventTarget: EventTarget = mouseEvent.target;
+            const eventTarget: EventTarget | null = mouseEvent.target;
             let dataPoint: any = d3.select(<d3.BaseType>eventTarget).datum();
             this.selectionManager.showContextMenu(dataPoint ? dataPoint.selectionId : {}, {
                 x: mouseEvent.clientX,
@@ -625,8 +644,8 @@ export class Visual implements IVisual {
 
             // adjust the left margin of the chart area according to the width of yaxis             
             // yAxisWidth used to adjust the left margin
-            /*var yAxisWidth = yAxis.node().getBoundingClientRect().width;
-            var yAxisHeight = yAxis.selectAll('text').node().getBoundingClientRect().height;*/
+            /*var yAxisWidth = yAxis.node()!.getBoundingClientRect().width;
+            var yAxisHeight = yAxis.selectAll('text').node()!.getBoundingClientRect().height;*/
 
 
             yAxis.selectAll('line').attr('x2', this.innerWidth);
@@ -669,7 +688,7 @@ export class Visual implements IVisual {
 
             // adjust the left margin of the chart area according to the width of yaxis             
             // yAxisWidth used to adjust the left margin
-            this.yAxisWidth = yAxis.node().getBoundingClientRect().width;
+            this.yAxisWidth = yAxis.node()!.getBoundingClientRect().width;
             this.innerWidth = this.innerWidth - this.yAxisWidth;
         }
         g.remove();
@@ -841,7 +860,8 @@ export class Visual implements IVisual {
             .call(this.labelFitToWidth);
         this.tooltipServiceWrapper.addTooltip(g.selectAll('.labels'),
             (dataPoint: any) => this.getTooltipData(dataPoint),
-            () => null);
+            // no identity-based tooltips here; the util's identity getter is optional
+            () => (null as unknown as ISelectionId));
 
         g.selectAll(".labels")
             .call(this.labelAlignment, xScale.bandwidth());
@@ -1066,7 +1086,7 @@ export class Visual implements IVisual {
     }
     private getTooltipData(value: any): VisualTooltipDataItem[] {
 
-        var tooltip = [];
+        var tooltip: any[] = [];
         if (value.isPillar == 1) {
             tooltip = [{
                 displayName: value.toolTipDisplayValue1,
@@ -1093,7 +1113,7 @@ export class Visual implements IVisual {
     }
     private getTooltipXaxis(value: any): VisualTooltipDataItem[] {
 
-        var tooltip = [];
+        var tooltip: any[] = [];
         tooltip = [{
             displayName: value.displayName,
         }];
@@ -1104,7 +1124,7 @@ export class Visual implements IVisual {
 
         tspan.each(function (this: SVGTextContentElement) {
             var tspan = d3.select(this);
-            var tspanWidth = tspan.node().getComputedTextLength();
+            var tspanWidth = tspan.node()!.getComputedTextLength();
             var diff = (width - tspanWidth) / 2;
             tspan.attr('dx', diff);
 
@@ -1119,7 +1139,7 @@ export class Visual implements IVisual {
             *************************************************/
             var minDataPoint = 0;
             var maxDataPoint = 0;
-            var cumulativeDataPoints = [];
+            var cumulativeDataPoints: any[] = [];
             for (let index = 0; index < data.length; index++) {
 
                 if (data[index].isPillar == 0) {
@@ -1156,7 +1176,7 @@ export class Visual implements IVisual {
             minDataPoint = this.visualSettings.yAxisFormatting.YAxisDataPointStartRange;
         } else */ {
 
-            var cumulativeDataPoints = [];
+            var cumulativeDataPoints: any[] = [];
             for (let index = 0; index < data.length; index++) {
 
                 if (data[index].isPillar == 0) {
@@ -1191,7 +1211,7 @@ export class Visual implements IVisual {
         /*if (this.visualSettings.yAxisFormatting.YAxisDataPointOption == "Range") {
             maxDataPoint = this.visualSettings.yAxisFormatting.YAxisDataPointEndRange;
         } else*/ {
-            var cumulativeDataPoints = [];
+            var cumulativeDataPoints: any[] = [];
             for (let index = 0; index < data.length; index++) {
                 if (data[index].isPillar == 0) {
                     if (index == 0) {
@@ -1264,22 +1284,22 @@ export class Visual implements IVisual {
 
     }
     private getDataStaticWaterfall(options: VisualUpdateOptions) {
-        let dataView: DataView = options.dataViews[0];
+        const dataView = this.requireMatrixDataView(options);
 
-        var visualData = [];
+        var visualData: any[] = [];
         var sortOrderIndex = 0;
-        for (let index = 0; index < dataView.matrix.columns.root.children.length; index++) {
-            dataView.matrix.rows.root.children.forEach((x: DataViewMatrixNode) => {
+        for (let index = 0; index < dataView.matrix.columns.root.children!.length; index++) {
+            dataView.matrix.rows.root.children!.forEach((x: DataViewMatrixNode) => {
                 var checkforZero = false;
-                if (this.visualSettings.LabelsFormatting.HideZeroBlankValues && +x.values[index].value == 0) {
+                if (this.visualSettings.LabelsFormatting.HideZeroBlankValues && Number(x.values![index].value) == 0) {
                     checkforZero = true;
                 }
                 if (checkforZero == false) {
-                    var data2 = [];
-                    data2["value"] = +x.values[index].value;
-                    data2["numberFormat"] = this.resolveFormat(x.values[index], dataView.matrix.valueSources[index].format);
+                    var data2: any[] = [];
+                    data2["value"] = Number(x.values![index].value);
+                    data2["numberFormat"] = this.resolveFormat(x.values![index], dataView.matrix.valueSources[index].format);
                     data2["selectionId"] = this.host.createSelectionIdBuilder()
-                        .withMeasure(dataView.matrix.valueSources[index].queryName)
+                        .withMeasure(dataView.matrix.valueSources[index].queryName ?? "")
                         .createSelectionId();
                     var y = dataView.matrix.valueSources[index];
                     if (y.objects) {
@@ -1408,10 +1428,10 @@ export class Visual implements IVisual {
     }
 
     private getDataDrillableWaterfall(options: VisualUpdateOptions) {
-        let dataView: DataView = options.dataViews[0];
-        var totalData = [];
-        var visualData = [];
-        var allMeasureValues = [];
+        const dataView = this.requireMatrixDataView(options);
+        var totalData: any[] = [];
+        var visualData: any[] = [];
+        var allMeasureValues: any[] = [];
         // find all values and aggregate them in an array of array with each child in an array of a measure
         allMeasureValues = this.findLowestLevels();
         var sortOrderPrecision = Math.pow(10, allMeasureValues.length * allMeasureValues[0].length.toString().length);
@@ -1420,14 +1440,14 @@ export class Visual implements IVisual {
         for (let indexMeasures = 0; indexMeasures < allMeasureValues.length; indexMeasures++) {
             var totalValueofMeasure = 0;
             var toolTipDisplayValue1 = "";
-            var toolTipDisplayValue2 = "";
-            var Measure1Value: number = null;
-            var Measure2Value: number = null;            
-            var dataPillar = [];
+            var toolTipDisplayValue2: string | null = "";
+            var Measure1Value: number | null = null;
+            var Measure2Value: number | null = null;            
+            var dataPillar: any[] = [];
             for (let nodeItems = 0; nodeItems < allMeasureValues[indexMeasures].length; nodeItems++) {
                 totalValueofMeasure = totalValueofMeasure + allMeasureValues[indexMeasures][nodeItems].value
                 if (indexMeasures < allMeasureValues.length - 1) {
-                    var data2Category = [];
+                    var data2Category: any[] = [];
                     Measure1Value = +allMeasureValues[indexMeasures][nodeItems].value;
                     Measure2Value = +allMeasureValues[indexMeasures + 1][nodeItems].value;
                     var valueDifference = Measure2Value - Measure1Value;
@@ -1467,13 +1487,13 @@ export class Visual implements IVisual {
         }
         // add arrays to the main array for additional x-axis for each category
         for (let levelItems = 0; levelItems < dataView.matrix.rows.levels.length - 1; levelItems++) {
-            var categorynode = []
+            var categorynode: any[] = []
             var childrenCount = 1;
             var displayNode;
 
             for (let nodeItems = 0; nodeItems < visualData.length; nodeItems++) {
                 var currNode = visualData[nodeItems];
-                var childnode = [];
+                var childnode: any[] = [];
                 var currCategoryText: string = currNode["category"];
                 var currCategoryArray: string[] = currCategoryText.split("|");
                 var newDisplayName = currCategoryArray[levelItems + 1];
@@ -1509,9 +1529,9 @@ export class Visual implements IVisual {
     }
 
     private getDataStaticCategoryWaterfall(options: VisualUpdateOptions) {
-        let dataView: DataView = options.dataViews[0];
+        const dataView = this.requireMatrixDataView(options);
 
-        var visualData = [];
+        var visualData: any[] = [];
         var hasPillar = false;
         //*******************************************************************
         //This will always be zero as it should only have 1 measure
@@ -1519,17 +1539,17 @@ export class Visual implements IVisual {
         //*******************************************************************
         var sortOrderIndex = 0;
         var orderIndex = 0;
-        dataView.matrix.rows.root.children.forEach((x: DataViewMatrixNode) => {
+        dataView.matrix.rows.root.children!.forEach((x: DataViewMatrixNode) => {
             var checkforZero = false;
-            if (this.visualSettings.LabelsFormatting.HideZeroBlankValues && +x.values[measureIndex].value == 0) {
+            if (this.visualSettings.LabelsFormatting.HideZeroBlankValues && Number(x.values![measureIndex].value) == 0) {
                 checkforZero = true;
             }
             if (checkforZero == false) {
-                var data2 = [];
+                var data2: any[] = [];
 
-                data2["value"] = +x.values[measureIndex].value;
+                data2["value"] = Number(x.values![measureIndex].value);
 
-                data2["numberFormat"] = this.resolveFormat(x.values[measureIndex], dataView.matrix.valueSources[measureIndex].format);
+                data2["numberFormat"] = this.resolveFormat(x.values![measureIndex], dataView.matrix.valueSources[measureIndex].format);
                 data2["selectionId"] = this.host.createSelectionIdBuilder()
                     .withMatrixNode(x, dataView.matrix.rows.levels)
                     .createSelectionId();
@@ -1621,7 +1641,7 @@ export class Visual implements IVisual {
         var limit = this.visualSettings.chartOrientation.maxBreakdown;
         var limitcounter = 0;
         var otherbreakdownstepCount = 0;
-        var newOther = [];
+        var newOther: any[] = [];
         var otherTotalValue = 0;
         var othersortOrderIndex = 0;
         for (let index = 0; index < currData.length; index++) {
@@ -1683,12 +1703,12 @@ export class Visual implements IVisual {
     }
     private addOtherBreakdownStep(options: VisualUpdateOptions, value, sortOrderIndex,sortOrderIndexforLimitBreakdown, otherbreakdownstepCount) {
         //*******************Add "Other" breakdown item *********************
-        let dataView: DataView = options.dataViews[0];
+        const dataView = this.requireMatrixDataView(options);
         //*******************************************************************
         //This will always be zero as it should only have 1 measure
         var measureIndex = 0;
         //
-        var data2 = [];
+        var data2: any[] = [];
 
         data2["value"] = value;
 
@@ -1721,10 +1741,10 @@ export class Visual implements IVisual {
     }
     private getDataDrillableCategoryWaterfall(options: VisualUpdateOptions) {
 
-        let dataView: DataView = options.dataViews[0];
-        var totalData = [];
-        var visualData = [];
-        var allMeasureValues = [];
+        const dataView = this.requireMatrixDataView(options);
+        var totalData: any[] = [];
+        var visualData: any[] = [];
+        var allMeasureValues: any[] = [];
 
         // find all values and aggregate them in an array of array with each child in an array of a measure        
         allMeasureValues = this.findLowestLevels();
@@ -1734,11 +1754,11 @@ export class Visual implements IVisual {
         let indexMeasures = 0;
         var totalValueofMeasure = 0;
         var toolTipDisplayValue1 = "";
-        var Measure1Value: number = null;
+        var Measure1Value: number | null = null;
         for (let nodeItems = 0; nodeItems < allMeasureValues[indexMeasures].length; nodeItems++) {
             totalValueofMeasure = totalValueofMeasure + allMeasureValues[indexMeasures][nodeItems].value
 
-            var data2Category = [];
+            var data2Category: any[] = [];
             Measure1Value = +allMeasureValues[indexMeasures][nodeItems].value;
 
             var valueDifference = Measure1Value;
@@ -1762,13 +1782,13 @@ export class Visual implements IVisual {
 
         // add arrays to the main array for additional x-axis for each category
         for (let levelItems = 0; levelItems < dataView.matrix.rows.levels.length - 1; levelItems++) {
-            var categorynode = []
+            var categorynode: any[] = []
             var childrenCount = 1;
             var displayNode;
 
             for (let nodeItems = 0; nodeItems < visualData.length; nodeItems++) {
                 var currNode = visualData[nodeItems];
-                var childnode = [];
+                var childnode: any[] = [];
                 var currCategoryText: string = currNode["category"];
                 var currCategoryArray: string[] = currCategoryText.split("|");
                 var newDisplayName = currCategoryArray[levelItems + 1];
@@ -1831,7 +1851,7 @@ export class Visual implements IVisual {
                         /* data2["xAxisFormat"] = dataView.matrix.rows.levels[0].sources[0].format;
                         data2["type"] = dataView.matrix.rows.levels[indexMeasures].sources[0].type;
                         data2["category"] = this.formatCategory(x.value, data2["type"], data2["xAxisFormat"]); */
-                        var node = [];
+                        var node: any[] = [];
                         node["value"] = child.values[indexMeasures].value;
                         node["numberFormat"] = getFormatCategory.resolveFormat(child.values[indexMeasures], dataView.matrix.valueSources[indexMeasures].format);
                         node["category"] = (parentText + "|" + getFormatCategory.formatCategory(child.value, type, format)).replace("null", "(blank)");
@@ -1859,16 +1879,16 @@ export class Visual implements IVisual {
                 });
             }
         };
-        var dataView = this.visualUpdateOptions.dataViews[0];
+        const dataView = this.requireMatrixDataView(this.visualUpdateOptions);
         var rows = dataView.matrix.rows;
         var root = rows.root;
-        var allNodes = [];
+        var allNodes: any[] = [];
         var childrenCount = 0;
         var host1 = this.host;
         var getFormatCategory = this;
-        var parentNodes = [];
+        var parentNodes: any[] = [];
         for (let indexMeasures = 0; indexMeasures < dataView.matrix.valueSources.length; indexMeasures++) {
-            var nodes = [];
+            var nodes: any[] = [];
             getChildLevel(root, "", indexMeasures, true);
             allNodes.push(nodes);
         }
@@ -1899,10 +1919,10 @@ export class Visual implements IVisual {
 
         };
         function createNode(child) {
-            var node = [];
+            var node: any[] = [];
             if (child.children == undefined) {
                 for (let indexMeasures = 0; indexMeasures < dataView.matrix.valueSources.length; indexMeasures++) {
-                    var nodeValue = [];
+                    var nodeValue: any[] = [];
                     nodeValue = child.values[indexMeasures].value;
                     node.push(nodeValue);
                 }
@@ -1940,13 +1960,13 @@ export class Visual implements IVisual {
         }
         var counter;
         var index = 0;
-        var allNodes = [];
+        var allNodes: any[] = [];
         var childrenCount = 0;
         var host1 = this.host
         var getFormatCategory = this;
-        var nodes = [];
-        var mainNode = [];
-        var dataView = this.visualUpdateOptions.dataViews[0];
+        var nodes: any[] = [];
+        var mainNode: any[] = [];
+        const dataView = this.requireMatrixDataView(this.visualUpdateOptions);
         var rows = dataView.matrix.rows;
         getChildLevel(root, "");
         allNodes.push(nodes);
@@ -1956,7 +1976,7 @@ export class Visual implements IVisual {
     private createXaxis(gParent, options, allDatatemp) {
         var g = gParent.append('g').attr('class', 'xAxisParentGroup');
         var myAxisParentHeight = 0;
-        var dataView = this.visualUpdateOptions.dataViews[0];
+        const dataView = this.requireMatrixDataView(this.visualUpdateOptions);
         var rows = dataView.matrix.rows;
         var root = rows.root;
         var levels = allDatatemp.length;
@@ -1977,7 +1997,9 @@ export class Visual implements IVisual {
         }
 
         for (var allDataIndex = levels - 1; allDataIndex >= 0; allDataIndex--) {
-            var currData = [];
+            var currData: any[] = [];
+            var xAxisrange: any[] = [];
+            var currChildCount = 0;
 
             if (allDataIndex == (levels - 1)) {
                 xScale = xBaseScale;
@@ -1986,8 +2008,6 @@ export class Visual implements IVisual {
             } else {
 
                 currData = this.getAllMatrixLevelsNew(root, allDataIndex);
-                var xAxisrange = [];
-                var currChildCount = 0
                 xAxisrange.push(0);
                 currData.forEach(element => {
                     currChildCount = currChildCount + myBandwidth * element.childrenCount;
@@ -2075,7 +2095,8 @@ export class Visual implements IVisual {
         this.tooltipServiceWrapper.addTooltip(
             myxAxisParent.selectAll(".tick text"),
             (dataPoint: any) => this.getTooltipXaxis(dataPoint),
-            () => null
+            // no identity-based tooltips here; the util's identity getter is optional
+            () => (null as unknown as ISelectionId)
         );
 
 
@@ -2123,7 +2144,7 @@ export class Visual implements IVisual {
                 .style('fill', 'none')
                 .style('stroke', this.visualSettings.xAxisFormatting.gridLineColor)
                 .style('stroke-width', this.defaultXAxisGridlineStrokeWidth() / 8 + "pt");
-            var myAxisTop = myxAxisParent.select("path").node().getBoundingClientRect().top
+            var myAxisTop = myxAxisParent.select("path").node()!.getBoundingClientRect().top
             myxAxisParent.selectAll(".text").data(currData)
                 .enter()
                 .append("line")
@@ -2158,8 +2179,8 @@ export class Visual implements IVisual {
         }
     }
     private addTotalLine(data: any, options: VisualUpdateOptions) {
-        let dataView: DataView = options.dataViews[0];
-        var data2 = [];
+        const dataView = this.requireMatrixDataView(options);
+        var data2: any[] = [];
         var totalValue = 0;
         var orderIndex = 0;
         //*******************************************************************
@@ -2181,7 +2202,7 @@ export class Visual implements IVisual {
 
         var x = dataView.matrix.valueSources[measureIndex];
         data2["selectionId"] = this.host.createSelectionIdBuilder()
-            .withMeasure(x.queryName)
+            .withMeasure(x.queryName ?? "")
             .createSelectionId();
         if (x.objects) {
             if (x.objects.sentimentColor && !this.visualSettings.chartOrientation.useSentimentFeatures) {
@@ -2223,9 +2244,9 @@ export class Visual implements IVisual {
         data2["sortOrderIndexforLimitBreakdown"] = 1;        
         return data2;
     }
-    private getDataForCategory(value: number, numberFormat: string, displayName: any, displayID: any, isPillar: number, selectionId: any, sortOrderIndex: number, childrenCount: number, toolTipDisplayValue1: string, toolTipDisplayValue2: string, Measure1Value: number, Measure2Value: number) {
+    private getDataForCategory(value: number, numberFormat: string, displayName: any, displayID: any, isPillar: number, selectionId: any, sortOrderIndex: number, childrenCount: number, toolTipDisplayValue1: string, toolTipDisplayValue2: string | null, Measure1Value: number | null, Measure2Value: number | null) {
 
-        var data2 = [];
+        var data2: any[] = [];
         data2["value"] = value;
         data2["numberFormat"] = numberFormat;
         data2["isPillar"] = isPillar;
@@ -2254,7 +2275,7 @@ export class Visual implements IVisual {
             var text = d3.select(this),
 
                 word,
-                line = [],
+                line: string[] = [],
                 lineNumber = 0,
                 lineHeight = 1,
                 y = text.attr("y"),
@@ -2263,7 +2284,7 @@ export class Visual implements IVisual {
 
 
 
-            width = standardwidth * text.datum()["childrenCount"];
+            width = standardwidth * (text.datum() as any)["childrenCount"];
             joinwith = "";
             var words = text.text().split("").reverse();
 
@@ -2272,7 +2293,7 @@ export class Visual implements IVisual {
             while (word = words.pop()) {
                 line.push(word);
                 tspan.text(line.join(joinwith));
-                if (tspan.node().getComputedTextLength() > width) {
+                if (tspan.node()!.getComputedTextLength() > width) {
 
                     // if the 3 lines goes over the standard width, then add "..." and stop adding any more lines
                     if (line.length != 1) {
@@ -2299,23 +2320,23 @@ export class Visual implements IVisual {
             var text = d3.select(this),
                 words = text.text().split(/\s+/).reverse(),
                 word,
-                line = [],
+                line: string[] = [],
                 lineNumber = 0,
                 lineHeight = 1.1,
                 y = text.attr("y"),
                 dy = parseFloat(text.attr("dy")),
                 tspan = text.text(null).append("tspan").attr("x", 0).attr("y", y).attr("dy", dy + "em");
-            width = standardwidth * text.datum()["childrenCount"];
+            width = standardwidth * (text.datum() as any)["childrenCount"];
 
             while (word = words.pop()) {
                 line.push(word);
                 tspan.text(line.join(" "));
 
-                if (tspan.node().getComputedTextLength() > width) {
+                if (tspan.node()!.getComputedTextLength() > width) {
 
                     if (line.length == 1) {
                         var currline = line[0].split("");
-                        while (tspan.node().getComputedTextLength() > width) {
+                        while (tspan.node()!.getComputedTextLength() > width) {
                             currline.pop()
                             line[0] = currline.join("");
                             tspan.text(line[0]);
@@ -2326,7 +2347,7 @@ export class Visual implements IVisual {
                         line = [word];
                         tspan = text.append("tspan").attr("x", 0).attr("y", y).attr("dy", ++lineNumber * lineHeight + dy + "em").text(word);
                         currline = tspan.text().split("");
-                        while (tspan.node().getComputedTextLength() > width) {
+                        while (tspan.node()!.getComputedTextLength() > width) {
                             currline.pop();
                             tspan.text(currline.join(""));
                         }
@@ -2363,7 +2384,7 @@ export class Visual implements IVisual {
         this.svg.on('contextmenu', (event: MouseEvent) => {
 
             const mouseEvent: MouseEvent = event;
-            const eventTarget: EventTarget = mouseEvent.target;
+            const eventTarget: EventTarget | null = mouseEvent.target;
             let dataPoint: any = d3.select(<d3.BaseType>eventTarget).datum();
             this.selectionManager.showContextMenu(dataPoint ? dataPoint.selectionId : {}, {
                 x: mouseEvent.clientX,
@@ -2632,7 +2653,7 @@ export class Visual implements IVisual {
             })
 
 
-            return xScale(d.category) + xScale.step() / 2;
+            return (xScale(d.category) ?? 0) + xScale.step() / 2;
         }
         var xScale = d3.scaleBand()
             .domain(this.barChartData.map(this.xValue))
@@ -2676,7 +2697,8 @@ export class Visual implements IVisual {
             .call(this.labelFitToWidthHorizontal, this.width + this.findRightHorizontal - this.scrollbarBreath);
         this.tooltipServiceWrapper.addTooltip(g.selectAll('.labels'),
             (dataPoint: any) => this.getTooltipData(dataPoint),
-            () => null);
+            // no identity-based tooltips here; the util's identity getter is optional
+            () => (null as unknown as ISelectionId));
 
 
 
@@ -2739,7 +2761,7 @@ export class Visual implements IVisual {
         return;
         tspan.each(function (this: SVGTextContentElement) {
             var tspan = d3.select(this);
-            var tspanWidth = tspan.node().getComputedTextLength();
+            var tspanWidth = tspan.node()!.getComputedTextLength();
             var diff = (width - tspanWidth) / 2;
             tspan.attr('dy', diff);
 
@@ -2837,7 +2859,7 @@ export class Visual implements IVisual {
         var g = gParent.append('g').attr('class', 'xAxisParentGroup');
 
         var myAxisParentHeight = 0;
-        var dataView = this.visualUpdateOptions.dataViews[0];
+        const dataView = this.requireMatrixDataView(this.visualUpdateOptions);
         var rows = dataView.matrix.rows;
         var root = rows.root;
         var levels = allDatatemp.length;
@@ -2858,7 +2880,9 @@ export class Visual implements IVisual {
         }
 
         for (var allDataIndex = levels - 1; allDataIndex >= 0; allDataIndex--) {
-            var currData = [];
+            var currData: any[] = [];
+            var xAxisrange: any[] = [];
+            var currChildCount = 0;
 
             if (allDataIndex == (levels - 1)) {
                 xScale = xBaseScale;
@@ -2867,8 +2891,6 @@ export class Visual implements IVisual {
             } else {
 
                 currData = this.getAllMatrixLevelsNew(root, allDataIndex);
-                var xAxisrange = [];
-                var currChildCount = 0
                 xAxisrange.push(0);
                 currData.forEach(element => {
                     currChildCount = currChildCount + myBandwidth * element.childrenCount;
@@ -2960,7 +2982,8 @@ export class Visual implements IVisual {
         this.tooltipServiceWrapper.addTooltip(
             myxAxisParent.selectAll(".tick text"),
             (dataPoint: any) => this.getTooltipXaxis(dataPoint),
-            () => null
+            // no identity-based tooltips here; the util's identity getter is optional
+            () => (null as unknown as ISelectionId)
         );
 
 
@@ -2994,7 +3017,7 @@ export class Visual implements IVisual {
         var maxtextWidth = 0;
         myxAxisParent.selectAll("text").each(function (this: SVGTextContentElement) {
             var text = d3.select(this);
-            var textWidth = text.node().getBoundingClientRect().width;
+            var textWidth = text.node()!.getBoundingClientRect().width;
             if (textWidth > maxtextWidth) {
                 maxtextWidth = textWidth;
             }
@@ -3011,7 +3034,7 @@ export class Visual implements IVisual {
                 .style('fill', 'none')
                 .style('stroke', this.visualSettings.xAxisFormatting.gridLineColor)
                 .style('stroke-width', this.defaultXAxisGridlineStrokeWidth() / 10 + "pt");
-            var myAxisTop = myxAxisParent.select("path").node().getBoundingClientRect().top
+            var myAxisTop = myxAxisParent.select("path").node()!.getBoundingClientRect().top
 
             myxAxisParent.selectAll(".text").data(currData)
                 .enter()
@@ -3049,7 +3072,7 @@ export class Visual implements IVisual {
 
         tspan.each(function (this: SVGTextContentElement) {
             var tspan = d3.select(this);
-            var tspanWidth = tspan.node().getComputedTextLength();
+            var tspanWidth = tspan.node()!.getComputedTextLength();
             var diff = (tspanWidth - width) / 2;
             tspan.attr('dx', diff);
 
@@ -3172,7 +3195,7 @@ export class Visual implements IVisual {
 
             // adjust the left margin of the chart area according to the width of yaxis             
             // yAxisWidth used to adjust the left margin
-            this.yAxisHeightHorizontal = yAxis.node().getBoundingClientRect().height;
+            this.yAxisHeightHorizontal = yAxis.node()!.getBoundingClientRect().height;
 
         }
         g.remove();
@@ -3180,7 +3203,7 @@ export class Visual implements IVisual {
 
     private wrapHorizontal(text, standardwidth) {
 
-        var textHeight = text.node().getBoundingClientRect().height;
+        var textHeight = text.node()!.getBoundingClientRect().height;
         var maxHeight = standardwidth * text.datum()["childrenCount"];
         var tspanAllowed = Math.floor(maxHeight / textHeight);
 
@@ -3189,7 +3212,7 @@ export class Visual implements IVisual {
                 words = text.text().split(/\s+/).reverse(),
                 wordsPerLine = Math.ceil(words.length / tspanAllowed),
                 word,
-                line = [],
+                line: string[] = [],
                 lineNumber = 0,
                 lineHeight = 1.1,
                 y = text.attr("y"),
@@ -3218,12 +3241,12 @@ export class Visual implements IVisual {
     // `nodeValue.objects.general.formatString`; `valueSources[i].format` is only
     // the measure's static model format and is empty for a dynamic-format measure.
     // Requires the `general.formatString` object in capabilities.json and apiVersion >= 4.2.
-    private resolveFormat(nodeValue: any, staticFormat: string): string {
+    private resolveFormat(nodeValue: any, staticFormat: string | undefined): string {
         var dynamic = nodeValue
             && nodeValue.objects
             && nodeValue.objects.general
             && nodeValue.objects.general.formatString;
-        return (typeof dynamic === "string" && dynamic.length > 0) ? dynamic : staticFormat;
+        return (typeof dynamic === "string" && dynamic.length > 0) ? dynamic : (staticFormat ?? "");
     }
     private formatValueforLabels(d: any) {
         return this.formatValueWithUnits(

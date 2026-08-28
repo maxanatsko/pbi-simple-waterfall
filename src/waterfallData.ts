@@ -15,6 +15,21 @@ import { SORT_EPSILON, SORT_EPSILON_MAX } from "./constants";
 const compareBySortKey = (a: BarChartDataPoint, b: BarChartDataPoint) =>
     (a.sortGroupIndex - b.sortGroupIndex) || (a.sortWithinGroupIndex - b.sortWithinGroupIndex);
 
+/** Black or white, whichever is legible on top of `bg` (a #rgb / #rrggbb
+ *  colour). Returns `fallback` when `bg` isn't a hex colour. */
+function readableTextColor(bg: string, fallback: string): string {
+    const m = /^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.exec((bg ?? "").trim());
+    if (!m) return fallback;
+    let hex = m[1];
+    if (hex.length === 3) hex = hex.split("").map(c => c + c).join("");
+    const channel = (i: number) => {
+        const c = parseInt(hex.slice(i, i + 2), 16) / 255;
+        return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    };
+    const luminance = 0.2126 * channel(0) + 0.7152 * channel(2) + 0.0722 * channel(4);
+    return luminance > 0.4 ? "#000000" : "#ffffff";
+}
+
 /** Everything the data converters read that is not the matrix itself. Built
  *  once per `update()` and handed to WaterfallDataBuilder. The matrix dataView
  *  is re-derived from `options` via requireMatrixDataView in each converter. */
@@ -116,6 +131,18 @@ export class WaterfallDataBuilder {
             dataPoint.customBarColor = this.getfillColor(dataPoint.isPillar, dataPoint.value);
             dataPoint.customFontColor = this.getLabelFontColor(dataPoint.isPillar, dataPoint.value);
             dataPoint.customLabelPositioning = this.getLabelPosition(dataPoint.isPillar, dataPoint.value);
+        }
+        this.applyInsideLabelContrast(dataPoint);
+    }
+
+    /** When labels sit inside the bar and follow the default font colour, swap
+     *  the default grey for black/white so the value stays readable on the
+     *  green / yellow / blue fill. */
+    private applyInsideLabelContrast(dataPoint: BarChartDataPoint) {
+        if (this.ctx.isHighContrast) return;
+        if (!this.ctx.renderSettings.labelsUseDefaultFontColor) return;
+        if (dataPoint.customLabelPositioning && dataPoint.customLabelPositioning.indexOf("Inside") === 0) {
+            dataPoint.customFontColor = readableTextColor(dataPoint.customBarColor, dataPoint.customFontColor);
         }
     }
     public buildStatic() {
@@ -490,8 +517,12 @@ export class WaterfallDataBuilder {
         data2.childrenCount = 1;
         data2.sortOrderIndex = sortOrderIndex + SORT_EPSILON_MAX;
         data2.sortGroupIndex = sortOrderIndex;
-        data2.sortWithinGroupIndex = Number.MAX_SAFE_INTEGER;
+        // Last within the group, but still ahead of the total pillar
+        // (Number.MAX_SAFE_INTEGER): "Other" is a breakdown step and must land
+        // before the total, not floating on top of it.
+        data2.sortWithinGroupIndex = Number.MAX_SAFE_INTEGER - 1;
         data2.showbreakdownstep = true;
+        this.applyInsideLabelContrast(data2);
         return data2;
 
     }
@@ -641,6 +672,7 @@ export class WaterfallDataBuilder {
         data2.customBarColor = this.getfillColor(data2.isPillar, data2.value);
         data2.customFontColor = this.getLabelFontColor(data2.isPillar, data2.value);
         data2.customLabelPositioning = this.getLabelPosition(data2.isPillar, data2.value);
+        this.applyInsideLabelContrast(data2);
         return data2;
     }
 }

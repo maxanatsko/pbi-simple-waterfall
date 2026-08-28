@@ -13,6 +13,7 @@ import { getMatrixLevelsAt } from "./matrix";
 import {
     BAND_PADDING,
     MARGIN_BUMP,
+    MAX_AXIS_STROKE_PT,
     Y_AXIS_TICK_COUNT,
     SCROLLBAR_TRACK_FILL,
     SCROLLBAR_TRACK_OPACITY,
@@ -349,9 +350,13 @@ export class ChartRenderer {
                 this.applyGridlineStyle(yAxis.selectAll('line'), this.ctx.renderSettings.yAxisGridLineColor, "0pt");
             }
             if (this.ctx.renderSettings.yAxisShowZeroGridLine) {
+                // Floor at 1pt: at the /10 scale the default width (1) resolves to
+                // 0.1pt and the zero line -- which also sits under the category
+                // axis baseline -- is invisible, so the toggle looked inert.
+                const zeroPt = Math.max(1, this.ctx.renderSettings.yAxisZeroLineStrokeWidth / 5);
                 yAxis.selectAll('line').each((d: any, i: number, nodes: any) => {
                     if (d == 0) {
-                        this.applyGridlineStyle(d3.select(nodes[i]), this.ctx.renderSettings.yAxisZeroLineColor, this.ctx.renderSettings.yAxisZeroLineStrokeWidth / 10 + "pt");
+                        this.applyGridlineStyle(d3.select(nodes[i]), this.ctx.renderSettings.yAxisZeroLineColor, zeroPt + "pt");
                     }
                 });
             }
@@ -390,6 +395,20 @@ export class ChartRenderer {
                 .style('fill', (d: any) => {
                     return d.customFontColor;
                 });
+            // Halo behind "inside" labels: a short bar lets the label spill onto
+            // the plain plot background, where the contrast-adjusted (often white)
+            // text would otherwise vanish. The bar-coloured outline separates it.
+            pillarLabelsText.each(function (this: SVGElement, d: any) {
+                const inside = typeof d.customLabelPositioning === "string"
+                    && d.customLabelPositioning.indexOf("Inside") === 0;
+                if (inside && d.customBarColor) {
+                    d3.select(this)
+                        .style('stroke', d.customBarColor)
+                        .style('stroke-width', '2px')
+                        .style('stroke-linejoin', 'round')
+                        .style('paint-order', 'stroke');
+                }
+            });
 
             var mainPos = o.mainPos;
             pillarLabelsg.attr('transform', (d: any, i: number, nodes: any) => {
@@ -472,7 +491,11 @@ export class ChartRenderer {
 
     }
     private lineWidth(d: any, i: number) {
-        var defaultwidth = this.ctx.renderSettings.xGridlineStrokeWidth / 10 + "pt";
+        // Cap the category-cell separators: the single "Stroke Width" control
+        // also drives the axis baseline, and past ~2pt the dividers read as a
+        // broken grid rather than a rule.
+        const pt = Math.min(this.ctx.renderSettings.xGridlineStrokeWidth / 10, MAX_AXIS_STROKE_PT);
+        var defaultwidth = pt + "pt";
         if (d.displayName == "" || i == 0) {
             defaultwidth = "0" + "pt";
         }
@@ -807,7 +830,8 @@ export class ChartRenderer {
     private createAxisGridlines(myxAxisParent: any, currData: any, allDataIndex: any, levels: any, xScale: any, xAxisrange: any, edge: number) {
         const o = this.orientation;
         if (this.ctx.renderSettings.xAxisShowGridLine) {
-            this.applyGridlineStyle(myxAxisParent.selectAll('path'), this.ctx.renderSettings.xAxisGridLineColor, this.ctx.renderSettings.xGridlineStrokeWidth / o.xGridlineStrokeDivisor + "pt");
+            const axisLinePt = Math.min(this.ctx.renderSettings.xGridlineStrokeWidth / o.xGridlineStrokeDivisor, MAX_AXIS_STROKE_PT);
+            this.applyGridlineStyle(myxAxisParent.selectAll('path'), this.ctx.renderSettings.xAxisGridLineColor, axisLinePt + "pt");
             var myAxisTop = myxAxisParent.select("path").node()!.getBoundingClientRect().top;
             const catPos = (d: any, i: number) => allDataIndex == (levels - 1)
                 ? xScale(d.category) - (xScale.padding() * xScale.step()) / 2

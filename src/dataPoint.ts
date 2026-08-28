@@ -29,6 +29,14 @@ export interface BarChartDataPoint {
     orderIndex?: number;
     xAxisFormat?: string;
     type?: any;
+    /** Running cumulative total up to and including this bar, pre-formatted.
+     *  Set for step bars; left undefined for pillars (the pillar value is the
+     *  total already). Rendered as an extra tooltip row. */
+    cumulativeFormatted?: string;
+    /** Values from the "Tooltips" field well for this bar's category, in field
+     *  order, each `{ displayName, value }` pre-formatted. Appended to the
+     *  hover tooltip. */
+    tooltipMeasures?: { displayName: string; value: string }[];
 }
 
 /** Build a BarChartDataPoint with safe defaults; converters override per-point fields. */

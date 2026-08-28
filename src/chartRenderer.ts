@@ -33,6 +33,8 @@ export interface ChartRenderContext {
     barChartData: BarChartDataPoint[];
     allData: BarChartDataPoint[][];
     dataView: DataView & { matrix: DataViewMatrix };
+    /** Count of leading `valueSources` bound to "Values" (the rest are "Tooltips"). */
+    measureCount: number;
     host: IVisualHost;
     formatter: ValueFormatter;
     interactions: BarInteractions;
@@ -698,7 +700,8 @@ export class ChartRenderer {
         var levels = allDatatemp.length;
         var xScale;
         var xBaseScale = o.mainBand(allDatatemp[allDatatemp.length - 1].map(this.xValue));
-        if (dataView.matrix.valueSources.length > 1) {
+        const measureCount = this.ctx.measureCount;
+        if (measureCount > 1) {
             var pillarsCount = 3;
             var fullWidth = o.scrollOrient == "x"
                 ? innerWidth - xBaseScale.bandwidth() + (xBaseScale.step() * xBaseScale.padding() * pillarsCount)
@@ -719,7 +722,7 @@ export class ChartRenderer {
                 xScale = xBaseScale;
                 currData = allDatatemp[allDatatemp.length - 1];
             } else {
-                currData = getMatrixLevelsAt(root, allDataIndex, dataView, this.ctx.host, this.ctx.formatter);
+                currData = getMatrixLevelsAt(root, allDataIndex, dataView, this.ctx.host, this.ctx.formatter, measureCount);
                 xAxisrange.push(0);
                 currData.forEach((element: any) => {
                     currChildCount = currChildCount + myBandwidth * element.childrenCount;
@@ -732,11 +735,11 @@ export class ChartRenderer {
             let edge = 0;
             var myWidth = currChildCount + myBandwidth;
             if (allDataIndex != (levels - 1)) {
-                if (dataView.matrix.valueSources.length == 1) {
+                if (measureCount == 1) {
                     var myxAxisParent;
                     edge = this.createAxis(myxAxisParent, g, false, myWidth, 0, xScale, xBaseScale, currData, allDataIndex, levels, xAxisrange, myAxisParentHeight, edge);
                 } else {
-                    for (let index = 1; index < dataView.matrix.valueSources.length; index++) {
+                    for (let index = 1; index < measureCount; index++) {
                         var myxAxisParent;
                         edge = this.createAxis(myxAxisParent, g, false, myWidth, index, xScale, xBaseScale, currData, allDataIndex, levels, xAxisrange, myAxisParentHeight, edge);
                     }

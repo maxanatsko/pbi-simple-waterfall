@@ -144,6 +144,13 @@ export class Visual implements IVisual {
             this.visualSettings.chartOrientation.limitBreakdown=false;
         }
 
+        // Value sources fed by the "Tooltips" field well trail the "Values"
+        // sources in `valueSources` (mapping order). They must not be counted as
+        // measures -- they only add rows to the hover tooltip -- or mode
+        // resolution and the converters would treat them as extra pillars/steps.
+        const valueSources = dataView.matrix.valueSources;
+        const measureCount = valueSources.filter(s => s.roles && s.roles["measure"]).length || valueSources.length;
+
         const builder = new WaterfallDataBuilder({
             options,
             host: this.host,
@@ -151,10 +158,10 @@ export class Visual implements IVisual {
             isHighContrast: this.isHighContrast,
             colorPalette: this.colorPalette,
             formatter: this.formatter,
+            measureCount,
         });
         const levels = dataView.matrix.rows.levels.length;
-        const sources = dataView.matrix.valueSources.length;
-        const mode = resolveVisualMode(levels, sources);
+        const mode = resolveVisualMode(levels, measureCount);
         const allData = mode.build(builder);
         this.visualType = mode;
         this.barChartData = allData[allData.length - 1];
@@ -167,6 +174,7 @@ export class Visual implements IVisual {
             barChartData: this.barChartData,
             allData,
             dataView,
+            measureCount,
             host: this.host,
             formatter: this.formatter,
             interactions: this.interactions,

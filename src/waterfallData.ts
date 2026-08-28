@@ -40,6 +40,9 @@ export interface WaterfallDataContext {
     isHighContrast: boolean;
     colorPalette: powerbi.extensibility.ISandboxExtendedColorPalette;
     formatter: ValueFormatter;
+    /** Number of leading `valueSources` bound to the "Values" role. Anything
+     *  after these is a "Tooltips" measure and must not be read as a pillar. */
+    measureCount: number;
 }
 
 /** Turns the matrix dataView into `BarChartDataPoint` rows for one of the four
@@ -135,6 +138,53 @@ export class WaterfallDataBuilder {
         this.applyInsideLabelContrast(dataPoint);
     }
 
+    /** Pull the "Tooltips"-role measure values for one matrix node (its `values`
+     *  map), formatted, in field order. Empty when nothing is in the Tooltips well. */
+    private tooltipMeasuresFor(nodeValues: any): { displayName: string; value: string }[] {
+        const sources = requireMatrixDataView(this.ctx.options).matrix.valueSources;
+        const out: { displayName: string; value: string }[] = [];
+        for (let i = this.ctx.measureCount; i < sources.length; i++) {
+            const raw = nodeValues && nodeValues[i] != null ? nodeValues[i].value : null;
+            out.push({
+                displayName: sources[i].displayName,
+                value: this.ctx.formatter.value(raw == null ? null : Number(raw), sources[i].format ?? ""),
+            });
+        }
+        return out;
+    }
+
+    /** Same, for the drillable path: pull tooltip values out of the trailing
+     *  per-source leaf arrays from `findLowestLevels`, aligned by leaf index. */
+    private tooltipMeasuresFromLeaves(allMeasureValues: any[], nodeItems: number): { displayName: string; value: string }[] {
+        const sources = requireMatrixDataView(this.ctx.options).matrix.valueSources;
+        const out: { displayName: string; value: string }[] = [];
+        for (let i = this.ctx.measureCount; i < allMeasureValues.length; i++) {
+            const leaf = allMeasureValues[i] && allMeasureValues[i][nodeItems];
+            const raw = leaf ? leaf.value : null;
+            out.push({
+                displayName: sources[i].displayName,
+                value: this.ctx.formatter.value(raw == null ? null : Number(raw), (leaf && leaf.numberFormat) || sources[i].format || ""),
+            });
+        }
+        return out;
+    }
+
+    /** Walk the final, sorted bar list and stamp each step with the running
+     *  cumulative total up to and including it. Pillars reset the running total
+     *  to their own value and carry no cumulative row (they are the total). */
+    private assignRunningCumulative(rows: BarChartDataPoint[]): void {
+        let running = 0;
+        for (const d of rows) {
+            if (d.isPillar == 1) {
+                running = d.value;
+                d.cumulativeFormatted = undefined;
+            } else {
+                running += d.value;
+                d.cumulativeFormatted = this.ctx.formatter.label({ ...d, value: running });
+            }
+        }
+    }
+
     /** When labels sit inside the bar and follow the default font colour, swap
      *  the default grey for black/white so the value stays readable on the
      *  green / yellow / blue fill. */
@@ -151,7 +201,9 @@ export class WaterfallDataBuilder {
 
         var visualData: BarChartDataPoint[] = [];
         var sortOrderIndex = 0;
-        for (let index = 0; index < dataView.matrix.columns.root.children!.length; index++) {
+        // Stop at the "Values" sources -- trailing "Tooltips" measures are not pillars.
+        const columnCount = Math.min(dataView.matrix.columns.root.children!.length, this.ctx.measureCount);
+        for (let index = 0; index < columnCount; index++) {
             dataView.matrix.rows.root.children!.forEach((x: DataViewMatrixNode) => {
                 var checkforZero = false;
                 if (this.ctx.renderSettings.labelsHideZeroBlankValues && Number(x.values![index].value) == 0) {
@@ -246,7 +298,9 @@ export class WaterfallDataBuilder {
         var visualData: BarChartDataPoint[] = [];
         var allMeasureValues: any[] = [];
         // find all values and aggregate them in an array of array with each child in an array of a measure
-        allMeasureValues = findLowestLevels(dataView, this.ctx.host, this.ctx.formatter);
+        // Drop any trailing "Tooltips"-role source arrays -- this waterfall is
+        // built from the differences between the "Values" measures only.
+        allMeasureValues = findLowestLevels(dataView, this.ctx.host, this.ctx.formatter).slice(0, this.ctx.measureCount);
         var maxNodes = Math.max(...allMeasureValues.map(m => m.length)) + 2;
         // calculate the difference between each measure and add them to an array as the step bars and then add the pillar bars [visualData]
         for (let indexMeasures = 0; indexMeasures < allMeasureValues.length; indexMeasures++) {
@@ -394,6 +448,7 @@ export class WaterfallDataBuilder {
                 }
                 data2.toolTipValue1Formatted = this.ctx.formatter.label(data2);
                 data2.toolTipDisplayValue1 = data2.category;
+                data2.tooltipMeasures = this.tooltipMeasuresFor(x.values);
                 data2.childrenCount = 1;
                 if (data2.isPillar == 1) {
                     sortOrderIndex = Math.round(sortOrderIndex) + 1
@@ -417,6 +472,7 @@ export class WaterfallDataBuilder {
             visualData = this.limitBreakdownsteps(options,visualData);
         }
         visualData = this.sortVisualData(visualData, false);
+        this.assignRunningCumulative(visualData);
         return visualData;
     }
     private limitBreakdownsteps(options: VisualUpdateOptions, currData: any) {
@@ -513,7 +569,8 @@ export class WaterfallDataBuilder {
         }
         data2.isPillar = 0;
         data2.toolTipValue1Formatted = this.ctx.formatter.label(data2);
-        data2.toolTipDisplayValue1 = data2.category;
+        // "Other", not the internal "defaultBreakdownStepOther<n>" category id.
+        data2.toolTipDisplayValue1 = data2.displayName;
         data2.childrenCount = 1;
         data2.sortOrderIndex = sortOrderIndex + SORT_EPSILON_MAX;
         data2.sortGroupIndex = sortOrderIndex;
@@ -563,6 +620,7 @@ export class WaterfallDataBuilder {
                 data2Category = this.getDataForCategory(valueDifference, (allMeasureValues[indexMeasures][nodeItems]["numberFormat"] || dataView.matrix.valueSources[indexMeasures].format), displayName, category, 0, selectionId, 1, 1, toolTipDisplayValue1, null, Measure1Value, null);
                 data2Category.sortGroupIndex = 0;
                 data2Category.sortWithinGroupIndex = nodeItems + 1;
+                data2Category.tooltipMeasures = this.tooltipMeasuresFromLeaves(allMeasureValues, nodeItems);
                 visualData.push(data2Category);
             }
 
@@ -611,6 +669,7 @@ export class WaterfallDataBuilder {
             totalData.push(categorynode);
         }
 
+        this.assignRunningCumulative(visualData);
         // final array that contains all the values as the last array, while all the other array are only for additional x-axis
         totalData.push(visualData);
         return totalData;
@@ -646,6 +705,8 @@ export class WaterfallDataBuilder {
 
         data2.toolTipValue1Formatted = this.ctx.formatter.label(data2);
         data2.toolTipDisplayValue1 = data2.category;
+        // Grand totals of any "Tooltips" measures live on the matrix root node.
+        data2.tooltipMeasures = this.tooltipMeasuresFor(dataView.matrix.rows.root.values);
         data2.childrenCount = 1;
         data2.sortOrderIndex = 1;
         data2.sortGroupIndex = 0;

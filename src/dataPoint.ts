@@ -1,0 +1,51 @@
+import powerbi from "powerbi-visuals-api";
+import ISelectionId = powerbi.visuals.ISelectionId;
+
+/** One rendered bar of the waterfall: a breakdown step or a pillar/total.
+ *  Produced by the data converters (see waterfallData.ts), consumed by the
+ *  renderer. A wide flat shape by design — the converters fill what they need
+ *  and the renderer / tooltips read fields straight off it. */
+export interface BarChartDataPoint {
+    value: number;
+    numberFormat: string;
+    isPillar: number;
+    category: string;
+    displayName: string;
+    selectionId: ISelectionId | null;
+    childrenCount: number;
+    sortOrderIndex: number;
+    sortOrderIndexforLimitBreakdown: number;
+    customBarColor: string;
+    customFontColor: string;
+    customLabelPositioning: string;
+    toolTipValue1Formatted: string;
+    toolTipDisplayValue1: string;
+    toolTipValue2Formatted?: string;
+    toolTipDisplayValue2?: string | null;
+    Measure1Value?: number | null;
+    Measure2Value?: number | null;
+    showbreakdownstep?: boolean;
+    orderIndex?: number;
+    xAxisFormat?: string;
+    type?: any;
+}
+
+/** Build a BarChartDataPoint with safe defaults; converters override per-point fields. */
+export function createBarChartDataPoint(): BarChartDataPoint {
+    return {
+        value: 0,
+        numberFormat: "",
+        isPillar: 0,
+        category: "",
+        displayName: "",
+        selectionId: null,
+        childrenCount: 0,
+        sortOrderIndex: 0,
+        sortOrderIndexforLimitBreakdown: 0,
+        customBarColor: "",
+        customFontColor: "",
+        customLabelPositioning: "",
+        toolTipValue1Formatted: "",
+        toolTipDisplayValue1: "",
+    };
+}

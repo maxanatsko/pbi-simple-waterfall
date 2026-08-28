@@ -32,7 +32,7 @@ import { formattingSettings } from "powerbi-visuals-utils-formattingmodel";
 import DataViewObjectsParser = dataViewObjectsParser.DataViewObjectsParser;
 import DataView = powerbi.DataView;
 import VisualEnumerationInstanceKinds = powerbi.VisualEnumerationInstanceKinds;
-import { BarChartDataPoint } from "./visual";
+import { BarChartDataPoint } from "./dataPoint";
 
 /* ============================================================================
  * Legacy read model

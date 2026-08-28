@@ -17,6 +17,13 @@ the authoritative version is in [`pbiviz.json`](pbiviz.json).
   intended change to rendering behaviour.
 - Added an `npm run typecheck` script and a matching CI step; test sources are
   now type-checked via `tsconfig.test.json`.
+- Split the `Visual` god class (was ~2150 lines) into focused modules —
+  `dataPoint`, `tooltip`, `valueFormatting`, `matrix`, `waterfallData`
+  (the four data converters), `interactions` (selection + keyboard),
+  `chartRenderer` (the draw pipeline) and `legend`. `Visual` is now a ~200-line
+  orchestrator. No intended change to rendering, data or interaction behaviour;
+  added unit tests for the converters, formatters, tooltips, keyboard
+  navigation and the scrollbar path.
 
 ## [3.0.0.0]
 

@@ -144,12 +144,13 @@ export class Visual implements IVisual {
             this.visualSettings.chartOrientation.limitBreakdown=false;
         }
 
-        // Value sources fed by the "Tooltips" field well trail the "Values"
-        // sources in `valueSources` (mapping order). They must not be counted as
-        // measures -- they only add rows to the hover tooltip -- or mode
-        // resolution and the converters would treat them as extra pillars/steps.
+        // Sources fed by the "Tooltips" field well trail the "Values" sources in
+        // `valueSources` (mapping order) and only add rows to the hover tooltip.
+        // Everything not explicitly tagged `tooltips` counts as a measure -- so a
+        // legacy source with no role metadata still counts, but a measure bound
+        // solely to Tooltips (Values empty) does not become a bogus bar.
         const valueSources = dataView.matrix.valueSources;
-        const measureCount = valueSources.filter(s => s.roles && s.roles["measure"]).length || valueSources.length;
+        const measureCount = valueSources.filter(s => !(s.roles && s.roles["tooltips"])).length;
 
         const builder = new WaterfallDataBuilder({
             options,

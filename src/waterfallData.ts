@@ -254,6 +254,7 @@ export class WaterfallDataBuilder {
                     }
                     data2.toolTipValue1Formatted = this.ctx.formatter.label(data2);
                     data2.toolTipDisplayValue1 = data2.category;
+                    data2.tooltipMeasures = this.tooltipMeasuresFor(x.values);
                     data2.childrenCount = 1;
                     if (data2.isPillar == 1) {
                         sortOrderIndex = sortOrderIndex + 1
@@ -269,6 +270,7 @@ export class WaterfallDataBuilder {
             });
         }
         visualData = this.sortVisualData(visualData, false);
+        this.assignRunningCumulative(visualData);
         return visualData;
     }
     private sortVisualData(visualData: BarChartDataPoint[], drillable: boolean) {
@@ -345,6 +347,7 @@ export class WaterfallDataBuilder {
             dataPillar = this.getDataForCategory(totalValueofMeasure, ((allMeasureValues[indexMeasures][0] && allMeasureValues[indexMeasures][0]["numberFormat"]) || dataView.matrix.valueSources[indexMeasures].format), dataView.matrix.valueSources[indexMeasures].displayName, dataView.matrix.valueSources[indexMeasures].displayName, 1, null, indexMeasures * 2, 1, toolTipDisplayValue1, toolTipDisplayValue2, Measure1Value, Measure2Value);
             dataPillar.sortGroupIndex = indexMeasures * 2;
             dataPillar.sortWithinGroupIndex = 0;
+            dataPillar.tooltipMeasures = this.tooltipMeasuresFor(dataView.matrix.rows.root.values);
             visualData.push(dataPillar);
         }
         if (this.ctx.renderSettings.limitBreakdown) {
@@ -396,6 +399,7 @@ export class WaterfallDataBuilder {
             }
             totalData.push(categorynode);
         }
+        this.assignRunningCumulative(visualData);
         // final array that contains all the values as the last array, while all the other array are only for additional x-axis
         totalData.push(visualData);
         return totalData;

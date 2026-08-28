@@ -144,13 +144,23 @@ export class WaterfallDataBuilder {
         const sources = requireMatrixDataView(this.ctx.options).matrix.valueSources;
         const out: { displayName: string; value: string }[] = [];
         for (let i = this.ctx.measureCount; i < sources.length; i++) {
-            const raw = nodeValues && nodeValues[i] != null ? nodeValues[i].value : null;
+            const cell = nodeValues ? nodeValues[i] : null;
             out.push({
                 displayName: sources[i].displayName,
-                value: this.ctx.formatter.value(raw == null ? null : Number(raw), sources[i].format ?? ""),
+                value: this.formatTooltipCell(cell ? cell.value : null, resolveFormat(cell, sources[i].format)),
             });
         }
         return out;
+    }
+
+    /** Format one tooltip cell: numeric values (incl. numeric strings) go through
+     *  the value formatter with the cell's resolved (possibly dynamic) format;
+     *  a text-valued measure is passed through verbatim. */
+    private formatTooltipCell(raw: any, format: string): string {
+        if (raw == null) return this.ctx.formatter.value(null, format);
+        if (typeof raw === "number") return this.ctx.formatter.value(raw, format);
+        const asNumber = Number(raw);
+        return Number.isNaN(asNumber) ? String(raw) : this.ctx.formatter.value(asNumber, format);
     }
 
     /** Same, for the drillable path: pull tooltip values out of the trailing
@@ -160,10 +170,9 @@ export class WaterfallDataBuilder {
         const out: { displayName: string; value: string }[] = [];
         for (let i = this.ctx.measureCount; i < allMeasureValues.length; i++) {
             const leaf = allMeasureValues[i] && allMeasureValues[i][nodeItems];
-            const raw = leaf ? leaf.value : null;
             out.push({
                 displayName: sources[i].displayName,
-                value: this.ctx.formatter.value(raw == null ? null : Number(raw), (leaf && leaf.numberFormat) || sources[i].format || ""),
+                value: this.formatTooltipCell(leaf ? leaf.value : null, (leaf && leaf.numberFormat) || sources[i].format || ""),
             });
         }
         return out;

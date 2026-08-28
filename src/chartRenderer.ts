@@ -150,30 +150,30 @@ export class ChartRenderer {
             this.ctx.renderSettings);
         this[this.orientation.crossAxisExtentField] = crossAxisExtent;
 
+        // The plot rectangle is known in stages: the value-axis label column/strip,
+        // then (via checkBarWidth) a possible scroll-mode expansion, then the
+        // category-label block. Reserve each as it becomes known and rebuild the
+        // orientation so every consumer -- the bar-width check, the category axis,
+        // the bars and labels -- reads the same scale.
         let findRightHorizontal = 0;
         if (o == "Vertical") {
             this.svgYAxis.attr("width", this.margin.left + this.yAxisWidth);
             this.width = this.width - this.margin.left - this.yAxisWidth - 5;
             this.svg.attr("width", this.width);
             this.svg.attr("transform", `translate(${this.margin.left + this.yAxisWidth},${0})`);
-            this.checkBarWidth();
-            // Match the category band scale to the actual drawable SVG width (the
-            // `this.width` assignment above: full width minus the left margin, the
-            // value-axis label column and a 5px seam -- the left margin is already
-            // out of `innerWidth`), then reserve half a band step: the outermost
-            // category label is centred on its band and wider than it, so without
-            // the gutter its outer half (and the last pillar) is clipped at the
-            // edge. Done after checkBarWidth so a scroll-mode expansion is folded in.
+            // Reserve the value-axis label column + a 5px seam (the left margin is
+            // already out of innerWidth) and half a band step for the outermost
+            // category label, which is centred on its band and wider than it.
             const cats = this.ctx.barChartData.length || 1;
             const endLabelGutter = Math.min((this.innerWidth / (cats + BAND_PADDING)) / 2, 40);
             this.innerWidth = this.innerWidth - crossAxisExtent - 5 - endLabelGutter;
             this.rebuildOrientation();
+            this.checkBarWidth();          // sees the real plot width; may expand innerWidth for scrolling
+            this.rebuildOrientation();     // fold any scroll-mode expansion into the scale
             findRightHorizontal = this.applyCategoryAxisLayout(this.gScrollable, allData);
-            // applyCategoryAxisLayout has now measured the category-label block and
-            // shrunk this.innerHeight to reserve room for it. Rebuild once more so
-            // the value scale's zero lands on the category-axis line: without this
-            // the bars' baseline sits at the container's bottom edge and short
-            // bars render on top of the category labels.
+            // applyCategoryAxisLayout has measured the category-label block and
+            // shrunk this.innerHeight. Rebuild so the value scale's zero lands on
+            // the category-axis line rather than the container's bottom edge.
             this.rebuildOrientation();
             this.createCrossAxis(this.svgYAxis, this.margin.left + this.yAxisWidth, findRightHorizontal);
             this.createCrossAxis(this.gScrollable, 0, findRightHorizontal);
@@ -181,17 +181,14 @@ export class ChartRenderer {
             this.svg.attr("width", this.width);
             this.innerHeight = this.innerHeight - this.yAxisHeightHorizontal;
             this.svg.attr("height", this.innerHeight);
-            this.checkBarWidth();
-            // The value-axis label strip is carved off the top and checkBarWidth
-            // may have expanded innerHeight for scrolling; rebuild so the category
-            // band scale lays the rows out over the real SVG height -- otherwise
-            // the last row (the total pillar) falls past the bottom edge.
-            this.rebuildOrientation();
+            this.rebuildOrientation();     // row band scale over the strip-reduced height
+            this.checkBarWidth();          // sees the real plot height; may expand innerHeight for scrolling
+            this.rebuildOrientation();     // fold any scroll-mode expansion into the scale
             findRightHorizontal = this.applyCategoryAxisLayout(this.gScrollable, allData);
             // applyCategoryAxisLayout has measured the (left) category-label block
-            // as this.xAxisPosition. Rebuild again so the value scale reserves that
-            // width instead of running the full container width and pushing the
-            // domain maximum -- and the tall pillars -- off the right edge.
+            // as this.xAxisPosition. Rebuild so the value scale reserves that width
+            // instead of running the full container width and pushing the domain
+            // maximum -- and the tall pillars -- off the right edge.
             this.rebuildOrientation();
             this.svgYAxis.attr("width", this.innerWidth + 5);
             this.svgYAxis.attr("height", this.yAxisHeightHorizontal);

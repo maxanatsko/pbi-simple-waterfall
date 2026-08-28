@@ -565,8 +565,6 @@ export class VisualFormattingSettingsModel extends formattingSettings.Model {
     ya.fontColor.visible = yValues;
     ya.YAxisValueFormatOption.visible = yValues;
     ya.decimalPlaces.visible = yValues;
-    ya.decimalPlaces.disabled = settings.yAxisFormatting.YAxisValueFormatOption === "None";
-    ya.decimalPlaces.disabledReason = "Choose a Display Units format other than None.";
     const yGrid = settings.yAxisFormatting.showGridLine;
     ya.gridLineStrokeWidth.visible = yGrid;
     ya.gridLineColor.visible = yGrid;
@@ -615,9 +613,6 @@ export class VisualFormattingSettingsModel extends formattingSettings.Model {
         }
       }
     }
-
-    lf.decimalPlaces.disabled = settings.LabelsFormatting.valueFormat === "None";
-    lf.decimalPlaces.disabledReason = "Choose a Display Units format other than None.";
   }
 
   private perDatapointToggle(name: string, displayName: string, value: boolean, selectionId: powerbi.visuals.ISelectionId): formattingSettings.ToggleSwitch {

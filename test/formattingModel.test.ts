@@ -157,7 +157,7 @@ describe("VisualFormattingSettingsModel.applyState", () => {
     expect(groupOf(ya, "connectors").topLevelSlice.name).toBe("joinBars");
   });
 
-  it("y-axis decimals are disabled with a reason when display units are None", () => {
+  it("decimal-places stays enabled when display units are None (precision still applies)", () => {
     const model = new VisualFormattingSettingsModel();
     const settings = new VisualSettings();
     settings.yAxisFormatting.YAxisValueFormatOption = "None";
@@ -165,12 +165,8 @@ describe("VisualFormattingSettingsModel.applyState", () => {
 
     model.applyState(visualMode("static"), settings, [row("A")], dataView(0));
 
-    const ya = findCard(model, "yAxisFormatting");
-    expect(ya.decimalPlaces.disabled).toBe(true);
-    expect(ya.decimalPlaces.disabledReason).toMatch(/Display Units/i);
-
-    const lf = findCard(model, "LabelsFormatting");
-    expect(lf.decimalPlaces.disabled).toBe(true);
+    expect(findCard(model, "yAxisFormatting").decimalPlaces.disabled).toBeFalsy();
+    expect(findCard(model, "LabelsFormatting").decimalPlaces.disabled).toBeFalsy();
   });
 
   it("cards expose master on/off as a card-level topLevelSlice", () => {

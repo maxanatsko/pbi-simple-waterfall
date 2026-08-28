@@ -149,18 +149,6 @@ export class ChartRenderer {
             this.yScaleTickValues,
             this.ctx.renderSettings);
         this[this.orientation.crossAxisExtentField] = crossAxisExtent;
-        if (this.orientation.name === "Vertical") {
-            // Match the category band scale to the actual drawable SVG width
-            // (see the `this.width` assignment below: full width minus the left
-            // margin, the value-axis label column and a 5px seam), then reserve
-            // half a band step on top. The outermost category label is centred
-            // on its band and is wider than the band itself, so without this
-            // gutter its outer half (and the last pillar) is clipped at the edge.
-            const cats = this.ctx.barChartData.length || 1;
-            const endLabelGutter = Math.min((this.innerWidth / (cats + BAND_PADDING)) / 2, 40);
-            this.innerWidth = this.innerWidth - crossAxisExtent - this.margin.left - 5 - endLabelGutter;
-            this.rebuildOrientation();
-        }
 
         let findRightHorizontal = 0;
         if (o == "Vertical") {
@@ -169,6 +157,17 @@ export class ChartRenderer {
             this.svg.attr("width", this.width);
             this.svg.attr("transform", `translate(${this.margin.left + this.yAxisWidth},${0})`);
             this.checkBarWidth();
+            // Match the category band scale to the actual drawable SVG width (the
+            // `this.width` assignment above: full width minus the left margin, the
+            // value-axis label column and a 5px seam -- the left margin is already
+            // out of `innerWidth`), then reserve half a band step: the outermost
+            // category label is centred on its band and wider than it, so without
+            // the gutter its outer half (and the last pillar) is clipped at the
+            // edge. Done after checkBarWidth so a scroll-mode expansion is folded in.
+            const cats = this.ctx.barChartData.length || 1;
+            const endLabelGutter = Math.min((this.innerWidth / (cats + BAND_PADDING)) / 2, 40);
+            this.innerWidth = this.innerWidth - crossAxisExtent - 5 - endLabelGutter;
+            this.rebuildOrientation();
             findRightHorizontal = this.applyCategoryAxisLayout(this.gScrollable, allData);
             // applyCategoryAxisLayout has now measured the category-label block and
             // shrunk this.innerHeight to reserve room for it. Rebuild once more so
@@ -182,12 +181,12 @@ export class ChartRenderer {
             this.svg.attr("width", this.width);
             this.innerHeight = this.innerHeight - this.yAxisHeightHorizontal;
             this.svg.attr("height", this.innerHeight);
-            // The value-axis label strip has been carved off the top; rebuild so
-            // the category band scale lays the rows out over the real SVG height
-            // instead of the full container -- otherwise the last row (the total
-            // pillar) falls past the bottom edge and is clipped.
-            this.rebuildOrientation();
             this.checkBarWidth();
+            // The value-axis label strip is carved off the top and checkBarWidth
+            // may have expanded innerHeight for scrolling; rebuild so the category
+            // band scale lays the rows out over the real SVG height -- otherwise
+            // the last row (the total pillar) falls past the bottom edge.
+            this.rebuildOrientation();
             findRightHorizontal = this.applyCategoryAxisLayout(this.gScrollable, allData);
             // applyCategoryAxisLayout has measured the (left) category-label block
             // as this.xAxisPosition. Rebuild again so the value scale reserves that

@@ -298,9 +298,11 @@ export class WaterfallDataBuilder {
         var visualData: BarChartDataPoint[] = [];
         var allMeasureValues: any[] = [];
         // find all values and aggregate them in an array of array with each child in an array of a measure
-        // Drop any trailing "Tooltips"-role source arrays -- this waterfall is
-        // built from the differences between the "Values" measures only.
-        allMeasureValues = findLowestLevels(dataView, this.ctx.host, this.ctx.formatter).slice(0, this.ctx.measureCount);
+        // The waterfall is built from the differences between the "Values"
+        // measures only (`allMeasureValues`); the trailing "Tooltips"-role source
+        // arrays stay in `allLeaves` for per-leaf tooltip rows.
+        const allLeaves = findLowestLevels(dataView, this.ctx.host, this.ctx.formatter);
+        allMeasureValues = allLeaves.slice(0, this.ctx.measureCount);
         var maxNodes = Math.max(...allMeasureValues.map(m => m.length)) + 2;
         // calculate the difference between each measure and add them to an array as the step bars and then add the pillar bars [visualData]
         for (let indexMeasures = 0; indexMeasures < allMeasureValues.length; indexMeasures++) {
@@ -330,6 +332,7 @@ export class WaterfallDataBuilder {
                         data2Category = this.getDataForCategory(valueDifference, (allMeasureValues[indexMeasures][nodeItems]["numberFormat"] || dataView.matrix.valueSources[indexMeasures].format), displayName, category, 0, selectionId, indexMeasures * maxNodes + (nodeItems + 1), 1, toolTipDisplayValue1, toolTipDisplayValue2, Measure1Value, Measure2Value);
                         data2Category.sortGroupIndex = indexMeasures * 2 + 1;
                         data2Category.sortWithinGroupIndex = nodeItems + 1;
+                        data2Category.tooltipMeasures = this.tooltipMeasuresFromLeaves(allLeaves, nodeItems);
                         visualData.push(data2Category);
                     }
                     

@@ -3,10 +3,39 @@ import VisualUpdateOptions = powerbi.extensibility.visual.VisualUpdateOptions;
 import IVisualHost = powerbi.extensibility.visual.IVisualHost;
 import DataViewMatrixNode = powerbi.DataViewMatrixNode;
 import ISelectionId = powerbi.visuals.ISelectionId;
-import { VisualSettings, DEFAULT_GREY } from "./settings";
+import { DEFAULT_GREY } from "./settings";
+import { RenderSettings } from "./renderSettings";
 import { BarChartDataPoint, createBarChartDataPoint } from "./dataPoint";
 import { ValueFormatter, resolveFormat } from "./valueFormatting";
 import { requireMatrixDataView, findLowestLevels } from "./matrix";
+import { SORT_EPSILON, SORT_EPSILON_MAX } from "./constants";
+
+/** Stable ordering key: sort by group, then by position within the group.
+ *  Replaces the old float-packed sortOrderIndex (precision loss with many nodes). */
+const compareBySortKey = (a: BarChartDataPoint, b: BarChartDataPoint) =>
+    (a.sortGroupIndex - b.sortGroupIndex) || (a.sortWithinGroupIndex - b.sortWithinGroupIndex);
+
+/** Whether a value source is numeric (vs text) per its declared type -- used to
+ *  decide if a Tooltips-role value should be number-formatted or shown as text. */
+function isNumericSource(source: any): boolean {
+    const t = source && source.type;
+    return !!(t && (t.numeric || t.integer));
+}
+
+/** Black or white, whichever is legible on top of `bg` (a #rgb / #rrggbb
+ *  colour). Returns `fallback` when `bg` isn't a hex colour. */
+function readableTextColor(bg: string, fallback: string): string {
+    const m = /^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.exec((bg ?? "").trim());
+    if (!m) return fallback;
+    let hex = m[1];
+    if (hex.length === 3) hex = hex.split("").map(c => c + c).join("");
+    const channel = (i: number) => {
+        const c = parseInt(hex.slice(i, i + 2), 16) / 255;
+        return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    };
+    const luminance = 0.2126 * channel(0) + 0.7152 * channel(2) + 0.0722 * channel(4);
+    return luminance > 0.4 ? "#000000" : "#ffffff";
+}
 
 /** Everything the data converters read that is not the matrix itself. Built
  *  once per `update()` and handed to WaterfallDataBuilder. The matrix dataView
@@ -14,10 +43,13 @@ import { requireMatrixDataView, findLowestLevels } from "./matrix";
 export interface WaterfallDataContext {
     options: VisualUpdateOptions;
     host: IVisualHost;
-    settings: VisualSettings;
+    renderSettings: RenderSettings;
     isHighContrast: boolean;
     colorPalette: powerbi.extensibility.ISandboxExtendedColorPalette;
     formatter: ValueFormatter;
+    /** Number of leading `valueSources` bound to the "Values" role. Anything
+     *  after these is a "Tooltips" measure and must not be read as a pillar. */
+    measureCount: number;
 }
 
 /** Turns the matrix dataView into `BarChartDataPoint` rows for one of the four
@@ -31,12 +63,12 @@ export class WaterfallDataBuilder {
             return this.ctx.colorPalette.background.value;
         }
         if (isPillar == 1) {
-            barColor = this.ctx.settings.sentimentColor.sentimentColorTotal;
+            barColor = this.ctx.renderSettings.sentimentColorTotal;
         } else {
             if (value < 0) {
-                barColor = this.ctx.settings.sentimentColor.sentimentColorAdverse;
+                barColor = this.ctx.renderSettings.sentimentColorAdverse;
             } else {
-                barColor = this.ctx.settings.sentimentColor.sentimentColorFavourable;
+                barColor = this.ctx.renderSettings.sentimentColorFavourable;
             }
         }
         return barColor;
@@ -46,44 +78,44 @@ export class WaterfallDataBuilder {
         if (this.ctx.isHighContrast) {
             return this.ctx.colorPalette.foreground.value;
         }
-        if (this.ctx.settings.LabelsFormatting.useDefaultFontColor) {
-            return this.ctx.settings.LabelsFormatting.fontColor;
+        if (this.ctx.renderSettings.labelsUseDefaultFontColor) {
+            return this.ctx.renderSettings.labelsFontColor;
         } else {
             if (isPillar == 1) {
-                return this.ctx.settings.LabelsFormatting.sentimentFontColorTotal;
+                return this.ctx.renderSettings.labelsSentimentFontColorTotal;
             } else if (value < 0) {
-                return this.ctx.settings.LabelsFormatting.sentimentFontColorAdverse;
+                return this.ctx.renderSettings.labelsSentimentFontColorAdverse;
             } else {
-                return this.ctx.settings.LabelsFormatting.sentimentFontColorFavourable;
+                return this.ctx.renderSettings.labelsSentimentFontColorFavourable;
             }
         }
     }
     private getLabelPosition(isPillar: number, value: number) {
-        if (this.ctx.settings.LabelsFormatting.useDefaultLabelPositioning) {
-            return this.ctx.settings.LabelsFormatting.labelPosition;
+        if (this.ctx.renderSettings.labelsUseDefaultPositioning) {
+            return this.ctx.renderSettings.labelsPosition;
         } else {
             if (isPillar == 1) {
-                return this.ctx.settings.LabelsFormatting.labelPositionTotal;
+                return this.ctx.renderSettings.labelsPositionTotal;
             } else if (value < 0) {
-                return this.ctx.settings.LabelsFormatting.labelPositionAdverse;
+                return this.ctx.renderSettings.labelsPositionAdverse;
             } else {
-                return this.ctx.settings.LabelsFormatting.labelPositionFavourable;
+                return this.ctx.renderSettings.labelsPositionFavourable;
             }
         }
 
     }
     private applyPerPointFormatting(dataPoint: BarChartDataPoint, objects: any, gateFontColorOnSentiment: boolean = true, gateLabelPositioningOnSentiment: boolean = true) {
         if (objects) {
-            if (objects.sentimentColor && !this.ctx.settings.chartOrientation.useSentimentFeatures) {
+            if (objects.sentimentColor && !this.ctx.renderSettings.useSentimentFeatures) {
                 dataPoint.customBarColor = (objects as any)["sentimentColor"]["fill"]["solid"]["color"];
             } else {
                 dataPoint.customBarColor = this.getfillColor(dataPoint.isPillar, dataPoint.value);
             }
 
             const fontColorEnabled = gateFontColorOnSentiment
-                ? !this.ctx.settings.chartOrientation.useSentimentFeatures
+                ? !this.ctx.renderSettings.useSentimentFeatures
                 : true;
-            if (objects.LabelsFormatting && fontColorEnabled && !this.ctx.settings.LabelsFormatting.useDefaultFontColor) {
+            if (objects.LabelsFormatting && fontColorEnabled && !this.ctx.renderSettings.labelsUseDefaultFontColor) {
                 if (objects.LabelsFormatting.fill) {
                     dataPoint.customFontColor = (objects as any)["LabelsFormatting"]["fill"]["solid"]["color"];
                 } else {
@@ -94,9 +126,9 @@ export class WaterfallDataBuilder {
             }
 
             const labelPositionEnabled = gateLabelPositioningOnSentiment
-                ? !this.ctx.settings.chartOrientation.useSentimentFeatures
+                ? !this.ctx.renderSettings.useSentimentFeatures
                 : true;
-            if (objects.LabelsFormatting && labelPositionEnabled && !this.ctx.settings.LabelsFormatting.useDefaultLabelPositioning) {
+            if (objects.LabelsFormatting && labelPositionEnabled && !this.ctx.renderSettings.labelsUseDefaultPositioning) {
                 if (objects.LabelsFormatting.labelPosition) {
                     dataPoint.customLabelPositioning = objects["LabelsFormatting"]["labelPosition"] as string;
                 } else {
@@ -110,6 +142,85 @@ export class WaterfallDataBuilder {
             dataPoint.customFontColor = this.getLabelFontColor(dataPoint.isPillar, dataPoint.value);
             dataPoint.customLabelPositioning = this.getLabelPosition(dataPoint.isPillar, dataPoint.value);
         }
+        this.applyInsideLabelContrast(dataPoint);
+    }
+
+    /** Pull the "Tooltips"-role measure values for one matrix node (its `values`
+     *  map), formatted, in field order. Empty when nothing is in the Tooltips well. */
+    private tooltipMeasuresFor(nodeValues: any): { formatted: { displayName: string; value: string }[]; raw: (number | null)[] } {
+        const sources = requireMatrixDataView(this.ctx.options).matrix.valueSources;
+        const formatted: { displayName: string; value: string }[] = [];
+        const raw: (number | null)[] = [];
+        for (let i = this.ctx.measureCount; i < sources.length; i++) {
+            const cell = nodeValues ? nodeValues[i] : null;
+            const numeric = isNumericSource(sources[i]);
+            formatted.push({
+                displayName: sources[i].displayName,
+                value: this.formatTooltipCell(cell ? cell.value : null, resolveFormat(cell, sources[i].format), numeric),
+            });
+            raw.push(numeric && cell != null && cell.value != null ? Number(cell.value) : null);
+        }
+        return { formatted, raw };
+    }
+
+    /** Format one tooltip cell: a numeric source goes through the value formatter
+     *  with the cell's resolved (possibly dynamic) format; a text source is
+     *  passed through verbatim (keeps leading zeros / intentional text). */
+    private formatTooltipCell(raw: any, format: string, numeric: boolean): string {
+        if (raw == null) return this.ctx.formatter.value(null, format);
+        if (numeric) return this.ctx.formatter.value(Number(raw), format);
+        return String(raw);
+    }
+
+    /** Same, for the drillable path: pull tooltip values out of the trailing
+     *  per-source leaf arrays from `findLowestLevels`, aligned by leaf index. */
+    private tooltipMeasuresFromLeaves(allMeasureValues: any[], nodeItems: number): { formatted: { displayName: string; value: string }[]; raw: (number | null)[] } {
+        const sources = requireMatrixDataView(this.ctx.options).matrix.valueSources;
+        const formatted: { displayName: string; value: string }[] = [];
+        const raw: (number | null)[] = [];
+        for (let i = this.ctx.measureCount; i < allMeasureValues.length; i++) {
+            const leaf = allMeasureValues[i] && allMeasureValues[i][nodeItems];
+            const numeric = isNumericSource(sources[i]);
+            formatted.push({
+                displayName: sources[i].displayName,
+                value: this.formatTooltipCell(leaf ? leaf.value : null, (leaf && leaf.numberFormat) || sources[i].format || "", numeric),
+            });
+            raw.push(numeric && leaf && leaf.value != null ? Number(leaf.value) : null);
+        }
+        return { formatted, raw };
+    }
+
+    /** Assign a tooltip-measure helper result ({formatted, raw}) onto a point. */
+    private setTooltipMeasures(d: BarChartDataPoint, tm: { formatted: { displayName: string; value: string }[]; raw: (number | null)[] }): void {
+        d.tooltipMeasures = tm.formatted;
+        d.tooltipMeasuresRaw = tm.raw;
+    }
+
+    /** Walk the final, sorted bar list and stamp each step with the running
+     *  cumulative total up to and including it. Pillars reset the running total
+     *  to their own value and carry no cumulative row (they are the total). */
+    private assignRunningCumulative(rows: BarChartDataPoint[]): void {
+        let running = 0;
+        for (const d of rows) {
+            if (d.isPillar == 1) {
+                running = d.value;
+                d.cumulativeFormatted = undefined;
+            } else {
+                running += d.value;
+                d.cumulativeFormatted = this.ctx.formatter.label({ ...d, value: running });
+            }
+        }
+    }
+
+    /** When labels sit inside the bar and follow the default font colour, swap
+     *  the default grey for black/white so the value stays readable on the
+     *  green / yellow / blue fill. */
+    private applyInsideLabelContrast(dataPoint: BarChartDataPoint) {
+        if (this.ctx.isHighContrast) return;
+        if (!this.ctx.renderSettings.labelsUseDefaultFontColor) return;
+        if (dataPoint.customLabelPositioning && dataPoint.customLabelPositioning.indexOf("Inside") === 0) {
+            dataPoint.customFontColor = readableTextColor(dataPoint.customBarColor, dataPoint.customFontColor);
+        }
     }
     public buildStatic() {
         const options = this.ctx.options;
@@ -117,10 +228,12 @@ export class WaterfallDataBuilder {
 
         var visualData: BarChartDataPoint[] = [];
         var sortOrderIndex = 0;
-        for (let index = 0; index < dataView.matrix.columns.root.children!.length; index++) {
+        // Stop at the "Values" sources -- trailing "Tooltips" measures are not pillars.
+        const columnCount = Math.min(dataView.matrix.columns.root.children!.length, this.ctx.measureCount);
+        for (let index = 0; index < columnCount; index++) {
             dataView.matrix.rows.root.children!.forEach((x: DataViewMatrixNode) => {
                 var checkforZero = false;
-                if (this.ctx.settings.LabelsFormatting.HideZeroBlankValues && Number(x.values![index].value) == 0) {
+                if (this.ctx.renderSettings.labelsHideZeroBlankValues && Number(x.values![index].value) == 0) {
                     checkforZero = true;
                 }
                 if (checkforZero == false) {
@@ -168,6 +281,7 @@ export class WaterfallDataBuilder {
                     }
                     data2.toolTipValue1Formatted = this.ctx.formatter.label(data2);
                     data2.toolTipDisplayValue1 = data2.category;
+                    this.setTooltipMeasures(data2, this.tooltipMeasuresFor(x.values));
                     data2.childrenCount = 1;
                     if (data2.isPillar == 1) {
                         sortOrderIndex = sortOrderIndex + 1
@@ -176,28 +290,31 @@ export class WaterfallDataBuilder {
                     } else {
                         data2.sortOrderIndex = sortOrderIndex;
                     }
+                    data2.sortGroupIndex = data2.sortOrderIndex;
+                    data2.sortWithinGroupIndex = 0;
                     visualData.push(data2);
                 }
             });
         }
         visualData = this.sortVisualData(visualData, false);
+        this.assignRunningCumulative(visualData);
         return visualData;
     }
     private sortVisualData(visualData: BarChartDataPoint[], drillable: boolean) {
         visualData.sort((a: BarChartDataPoint, b: BarChartDataPoint) => {
-            switch (this.ctx.settings.chartOrientation.sortData) {
+            switch (this.ctx.renderSettings.sortData) {
                 case 3:
-                    if (Math.floor(a.sortOrderIndex) === Math.floor(b.sortOrderIndex)) {
+                    if (a.sortGroupIndex === b.sortGroupIndex) {
                         return parseFloat(a.value.toString()) - parseFloat(b.value.toString());
                     }
-                    return a.sortOrderIndex - b.sortOrderIndex;
+                    return compareBySortKey(a, b);
                 case 2:
-                    if (Math.floor(a.sortOrderIndex) === Math.floor(b.sortOrderIndex)) {
+                    if (a.sortGroupIndex === b.sortGroupIndex) {
                         return parseFloat(b.value.toString()) - parseFloat(a.value.toString());
                     }
-                    return a.sortOrderIndex - b.sortOrderIndex;
+                    return compareBySortKey(a, b);
                 default:
-                    return drillable ? a.sortOrderIndex - b.sortOrderIndex : 0;
+                    return drillable ? compareBySortKey(a, b) : 0;
             }
         });
         return visualData;
@@ -210,9 +327,12 @@ export class WaterfallDataBuilder {
         var visualData: BarChartDataPoint[] = [];
         var allMeasureValues: any[] = [];
         // find all values and aggregate them in an array of array with each child in an array of a measure
-        allMeasureValues = findLowestLevels(dataView, this.ctx.host, this.ctx.formatter);
-        var sortOrderPrecision = Math.pow(10, allMeasureValues.length * allMeasureValues[0].length.toString().length);
-        var sortOrderIndex = 1;
+        // The waterfall is built from the differences between the "Values"
+        // measures only (`allMeasureValues`); the trailing "Tooltips"-role source
+        // arrays stay in `allLeaves` for per-leaf tooltip rows.
+        const allLeaves = findLowestLevels(dataView, this.ctx.host, this.ctx.formatter);
+        allMeasureValues = allLeaves.slice(0, this.ctx.measureCount);
+        var maxNodes = Math.max(...allMeasureValues.map(m => m.length)) + 2;
         // calculate the difference between each measure and add them to an array as the step bars and then add the pillar bars [visualData]
         for (let indexMeasures = 0; indexMeasures < allMeasureValues.length; indexMeasures++) {
             var totalValueofMeasure = 0;
@@ -228,7 +348,7 @@ export class WaterfallDataBuilder {
                     Measure1Value = +allMeasureValues[indexMeasures][nodeItems].value;
                     Measure2Value = +allMeasureValues[indexMeasures + 1][nodeItems].value;
                     var valueDifference = Measure2Value - Measure1Value;
-                    var HideZeroBlankValues: boolean = this.ctx.settings.LabelsFormatting.HideZeroBlankValues;                    
+                    var HideZeroBlankValues: boolean = this.ctx.renderSettings.labelsHideZeroBlankValues;                    
                     if (HideZeroBlankValues && valueDifference == 0) {
                         // hidden: drop this zero/blank step
                     } else {
@@ -238,7 +358,10 @@ export class WaterfallDataBuilder {
                         var displayName: string = allMeasureValues[indexMeasures][nodeItems].displayName;
                         var category: string = dataView.matrix.valueSources[indexMeasures].displayName + allMeasureValues[indexMeasures][nodeItems].category.toString();
                         var selectionId = allMeasureValues[indexMeasures][nodeItems].selectionId;
-                        data2Category = this.getDataForCategory(valueDifference, (allMeasureValues[indexMeasures][nodeItems]["numberFormat"] || dataView.matrix.valueSources[indexMeasures].format), displayName, category, 0, selectionId, sortOrderIndex + ((nodeItems + 1) / sortOrderPrecision), 1, toolTipDisplayValue1, toolTipDisplayValue2, Measure1Value, Measure2Value);
+                        data2Category = this.getDataForCategory(valueDifference, (allMeasureValues[indexMeasures][nodeItems]["numberFormat"] || dataView.matrix.valueSources[indexMeasures].format), displayName, category, 0, selectionId, indexMeasures * maxNodes + (nodeItems + 1), 1, toolTipDisplayValue1, toolTipDisplayValue2, Measure1Value, Measure2Value);
+                        data2Category.sortGroupIndex = indexMeasures * 2 + 1;
+                        data2Category.sortWithinGroupIndex = nodeItems + 1;
+                        this.setTooltipMeasures(data2Category, this.tooltipMeasuresFromLeaves(allLeaves, nodeItems));
                         visualData.push(data2Category);
                     }
                     
@@ -248,11 +371,13 @@ export class WaterfallDataBuilder {
             toolTipDisplayValue2 = null;
             Measure1Value = totalValueofMeasure;
             Measure2Value = null;                        
-            dataPillar = this.getDataForCategory(totalValueofMeasure, ((allMeasureValues[indexMeasures][0] && allMeasureValues[indexMeasures][0]["numberFormat"]) || dataView.matrix.valueSources[indexMeasures].format), dataView.matrix.valueSources[indexMeasures].displayName, dataView.matrix.valueSources[indexMeasures].displayName, 1, null, sortOrderIndex - 1, 1, toolTipDisplayValue1, toolTipDisplayValue2, Measure1Value, Measure2Value);                        
-            sortOrderIndex = sortOrderIndex + 2;
+            dataPillar = this.getDataForCategory(totalValueofMeasure, ((allMeasureValues[indexMeasures][0] && allMeasureValues[indexMeasures][0]["numberFormat"]) || dataView.matrix.valueSources[indexMeasures].format), dataView.matrix.valueSources[indexMeasures].displayName, dataView.matrix.valueSources[indexMeasures].displayName, 1, null, indexMeasures * 2, 1, toolTipDisplayValue1, toolTipDisplayValue2, Measure1Value, Measure2Value);
+            dataPillar.sortGroupIndex = indexMeasures * 2;
+            dataPillar.sortWithinGroupIndex = 0;
+            this.setTooltipMeasures(dataPillar, this.tooltipMeasuresFor(dataView.matrix.rows.root.values));
             visualData.push(dataPillar);
         }
-        if (this.ctx.settings.chartOrientation.limitBreakdown) {
+        if (this.ctx.renderSettings.limitBreakdown) {
             visualData = this.limitBreakdownsteps(options, visualData);
         }
         // Sort the [visualData] in order of the display
@@ -260,7 +385,7 @@ export class WaterfallDataBuilder {
             this.sortVisualData(visualData, true);
         } else {
             visualData.sort((a: any, b: any) => {
-                return a.sortOrderIndex - b.sortOrderIndex;
+                return compareBySortKey(a, b);
             });
         }
         // add arrays to the main array for additional x-axis for each category
@@ -301,6 +426,7 @@ export class WaterfallDataBuilder {
             }
             totalData.push(categorynode);
         }
+        this.assignRunningCumulative(visualData);
         // final array that contains all the values as the last array, while all the other array are only for additional x-axis
         totalData.push(visualData);
         return totalData;
@@ -320,7 +446,7 @@ export class WaterfallDataBuilder {
         var orderIndex = 0;
         dataView.matrix.rows.root.children!.forEach((x: DataViewMatrixNode) => {
             var checkforZero = false;
-            if (this.ctx.settings.LabelsFormatting.HideZeroBlankValues && Number(x.values![measureIndex].value) == 0) {
+            if (this.ctx.renderSettings.labelsHideZeroBlankValues && Number(x.values![measureIndex].value) == 0) {
                 checkforZero = true;
             }
             if (checkforZero == false) {
@@ -356,46 +482,56 @@ export class WaterfallDataBuilder {
                 }
                 data2.toolTipValue1Formatted = this.ctx.formatter.label(data2);
                 data2.toolTipDisplayValue1 = data2.category;
+                this.setTooltipMeasures(data2, this.tooltipMeasuresFor(x.values));
                 data2.childrenCount = 1;
                 if (data2.isPillar == 1) {
                     sortOrderIndex = Math.round(sortOrderIndex) + 1
                     data2.sortOrderIndex = sortOrderIndex;
-                    data2.sortOrderIndexforLimitBreakdown = sortOrderIndex;
                     sortOrderIndex = sortOrderIndex + 1
                 } else {
-                    sortOrderIndex = sortOrderIndex + + 0.000001;
+                    sortOrderIndex = sortOrderIndex + + SORT_EPSILON;
                     data2.sortOrderIndex = sortOrderIndex ;
-                    data2.sortOrderIndexforLimitBreakdown = sortOrderIndex;
                 }
+                data2.sortGroupIndex = Math.round(data2.sortOrderIndex);
+                data2.sortWithinGroupIndex = orderIndex;
                 orderIndex++;
                 data2.orderIndex = orderIndex;
                 visualData.push(data2);
             }
         });
-        if (!hasPillar && this.ctx.settings.definePillars.Totalpillar) {
+        if (!hasPillar && this.ctx.renderSettings.showTotalPillar) {
             visualData.push(this.addTotalLine(visualData, options));
         }
-        if (this.ctx.settings.chartOrientation.limitBreakdown) {
+        if (this.ctx.renderSettings.limitBreakdown) {
             visualData = this.limitBreakdownsteps(options,visualData);
         }
         visualData = this.sortVisualData(visualData, false);
+        this.assignRunningCumulative(visualData);
         return visualData;
     }
     private limitBreakdownsteps(options: VisualUpdateOptions, currData: any) {
         //var currData = []
         //currData = this.getDataStaticCategoryWaterfall(options);
         currData.sort((a: any, b: any) => {
-            if (Math.round(a.sortOrderIndexforLimitBreakdown) === Math.round(b.sortOrderIndexforLimitBreakdown) && a.isPillar !=1) {
+            if (a.sortGroupIndex === b.sortGroupIndex && a.isPillar != 1) {
                 return parseFloat(Math.abs(b.value).toString()) - parseFloat(Math.abs(a.value).toString());
             } else {
-                return Math.round(a.sortOrderIndexforLimitBreakdown) - Math.round(b.sortOrderIndexforLimitBreakdown);
+                return compareBySortKey(a, b);
             }
         });
-        var limit = this.ctx.settings.chartOrientation.maxBreakdown;
+        var limit = this.ctx.renderSettings.maxBreakdown;
         var limitcounter = 0;
         var newOther: any[] = [];
         var otherTotalValue = 0;
         var othersortOrderIndex = 0;
+        // Running per-tooltip-source sums for the categories folded into "Other".
+        let otherTooltipSum: number[] = [];
+        const addToTooltipSum = (raw: (number | null)[] | undefined) => {
+            if (!raw) return;
+            for (let k = 0; k < raw.length; k++) {
+                if (raw[k] != null) otherTooltipSum[k] = (otherTooltipSum[k] || 0) + (raw[k] as number);
+            }
+        };
         for (let index = 0; index < currData.length; index++) {
             /*currData[index]["showbreakdownstep"] = false;
             otherTotalValue = otherTotalValue + currData[index].value
@@ -404,25 +540,27 @@ export class WaterfallDataBuilder {
                 currData[index]["showbreakdownstep"] = true;
                 limitcounter = 0;
                 if (otherTotalValue != 0) {
-                    newOther.push(this.addOtherBreakdownStep(options, otherTotalValue, othersortOrderIndex, othersortOrderIndex));
+                    newOther.push(this.addOtherBreakdownStep(options, otherTotalValue, othersortOrderIndex, otherTooltipSum));
                 }
                 otherTotalValue = 0
                 othersortOrderIndex = 0;
+                otherTooltipSum = [];
 
             } else if (limitcounter < limit) {
                 limitcounter++;
                 currData[index]["showbreakdownstep"] = true;
             }
             else if (
-                (index != currData.length - 1 && currData[index].sortOrderIndex == currData[index + 1].sortOrderIndex && limitcounter < limit)
-                || (index != 0 && currData[index].sortOrderIndex == currData[index - 1].sortOrderIndex && limitcounter < limit)
+                (index != currData.length - 1 && currData[index].sortGroupIndex === currData[index + 1].sortGroupIndex && limitcounter < limit)
+                || (index != 0 && currData[index].sortGroupIndex === currData[index - 1].sortGroupIndex && limitcounter < limit)
             ) {
                 limitcounter++;
                 currData[index]["showbreakdownstep"] = true;
             } else {
                 currData[index]["showbreakdownstep"] = false;
                 otherTotalValue = otherTotalValue + currData[index].value;
-                othersortOrderIndex = Math.round(currData[index].sortOrderIndex);
+                othersortOrderIndex = currData[index].sortGroupIndex;
+                addToTooltipSum(currData[index].tooltipMeasuresRaw);
             }
         }
 
@@ -438,20 +576,14 @@ export class WaterfallDataBuilder {
 
         }
         currData.sort((a: any, b: any) => {
-            if (a.sortOrderIndexforLimitBreakdown === b.sortOrderIndexforLimitBreakdown) {
-                //return parseFloat(Math.abs(b.value).toString()) - parseFloat(Math.abs(a.value).toString());
-                //return a.orderIndex - b.orderIndex;
-                return a.sortOrderIndexforLimitBreakdown - b.sortOrderIndexforLimitBreakdown;
-            } else {
-                return a.sortOrderIndexforLimitBreakdown - b.sortOrderIndexforLimitBreakdown;
-            }
+            return compareBySortKey(a, b);
         });
 
         
 
         return currData;
     }
-    private addOtherBreakdownStep(options: VisualUpdateOptions, value: any, sortOrderIndex: any, sortOrderIndexforLimitBreakdown: any) {
+    private addOtherBreakdownStep(options: VisualUpdateOptions, value: any, sortOrderIndex: any, tooltipSum?: number[]) {
         //*******************Add "Other" breakdown item *********************
         const dataView = requireMatrixDataView(options);
         //*******************************************************************
@@ -468,24 +600,47 @@ export class WaterfallDataBuilder {
         data2.type = dataView.matrix.rows.levels[0].sources[0].type;
         data2.category = "defaultBreakdownStepOther" + sortOrderIndex;
         data2.displayName = "Other";
-        data2.customBarColor = this.ctx.settings.sentimentColor.sentimentColorOther;
-        if (this.ctx.settings.LabelsFormatting.useDefaultFontColor) {
-            data2.customFontColor = this.ctx.settings.LabelsFormatting.fontColor
+        data2.customBarColor = this.ctx.renderSettings.sentimentColorOther;
+        if (this.ctx.renderSettings.labelsUseDefaultFontColor) {
+            data2.customFontColor = this.ctx.renderSettings.labelsFontColor
         } else {
-            data2.customFontColor = this.ctx.settings.LabelsFormatting.sentimentFontColorOther;
+            data2.customFontColor = this.ctx.renderSettings.labelsSentimentFontColorOther;
         }
-        if (this.ctx.settings.LabelsFormatting.useDefaultLabelPositioning) {
-            data2.customLabelPositioning = this.ctx.settings.LabelsFormatting.labelPosition
+        if (this.ctx.renderSettings.labelsUseDefaultPositioning) {
+            data2.customLabelPositioning = this.ctx.renderSettings.labelsPosition
         } else {
-            data2.customLabelPositioning = this.ctx.settings.LabelsFormatting.labelPositionOther;
+            data2.customLabelPositioning = this.ctx.renderSettings.labelsPositionOther;
         }
         data2.isPillar = 0;
         data2.toolTipValue1Formatted = this.ctx.formatter.label(data2);
-        data2.toolTipDisplayValue1 = data2.category;
+        // "Other", not the internal "defaultBreakdownStepOther<n>" category id.
+        data2.toolTipDisplayValue1 = data2.displayName;
+        // Tooltip fields on "Other" = the sum across the folded-in categories.
+        if (tooltipSum && tooltipSum.length) {
+            const sources = dataView.matrix.valueSources;
+            const formatted: { displayName: string; value: string }[] = [];
+            const raw: (number | null)[] = [];
+            for (let k = 0; k < tooltipSum.length; k++) {
+                const src = sources[this.ctx.measureCount + k];
+                const sum = tooltipSum[k];
+                formatted.push({
+                    displayName: src ? src.displayName : "",
+                    value: this.formatTooltipCell(sum == null ? null : sum, (src && src.format) || "", true),
+                });
+                raw.push(sum == null ? null : sum);
+            }
+            data2.tooltipMeasures = formatted;
+            data2.tooltipMeasuresRaw = raw;
+        }
         data2.childrenCount = 1;
-        data2.sortOrderIndex = sortOrderIndex + 0.999999;
-        data2.sortOrderIndexforLimitBreakdown = sortOrderIndexforLimitBreakdown + 0.999999;        
+        data2.sortOrderIndex = sortOrderIndex + SORT_EPSILON_MAX;
+        data2.sortGroupIndex = sortOrderIndex;
+        // Last within the group, but still ahead of the total pillar
+        // (Number.MAX_SAFE_INTEGER): "Other" is a breakdown step and must land
+        // before the total, not floating on top of it.
+        data2.sortWithinGroupIndex = Number.MAX_SAFE_INTEGER - 1;
         data2.showbreakdownstep = true;
+        this.applyInsideLabelContrast(data2);
         return data2;
 
     }
@@ -512,7 +667,7 @@ export class WaterfallDataBuilder {
             Measure1Value = +allMeasureValues[indexMeasures][nodeItems].value;
 
             var valueDifference = Measure1Value;
-            var HideZeroBlankValues: boolean = this.ctx.settings.LabelsFormatting.HideZeroBlankValues;
+            var HideZeroBlankValues: boolean = this.ctx.renderSettings.labelsHideZeroBlankValues;
             if (HideZeroBlankValues && valueDifference == 0) {
 
                 // hidden: drop this zero/blank step
@@ -524,11 +679,14 @@ export class WaterfallDataBuilder {
                 var category: string = dataView.matrix.valueSources[indexMeasures].displayName + allMeasureValues[indexMeasures][nodeItems].category.toString();
                 var selectionId = allMeasureValues[indexMeasures][nodeItems].selectionId;
                 data2Category = this.getDataForCategory(valueDifference, (allMeasureValues[indexMeasures][nodeItems]["numberFormat"] || dataView.matrix.valueSources[indexMeasures].format), displayName, category, 0, selectionId, 1, 1, toolTipDisplayValue1, null, Measure1Value, null);
+                data2Category.sortGroupIndex = 0;
+                data2Category.sortWithinGroupIndex = nodeItems + 1;
+                this.setTooltipMeasures(data2Category, this.tooltipMeasuresFromLeaves(allMeasureValues, nodeItems));
                 visualData.push(data2Category);
             }
 
         }
-        if (this.ctx.settings.definePillars.Totalpillar) {
+        if (this.ctx.renderSettings.showTotalPillar) {
             visualData.push(this.addTotalLine(visualData, options));
         }
 
@@ -572,6 +730,7 @@ export class WaterfallDataBuilder {
             totalData.push(categorynode);
         }
 
+        this.assignRunningCumulative(visualData);
         // final array that contains all the values as the last array, while all the other array are only for additional x-axis
         totalData.push(visualData);
         return totalData;
@@ -607,9 +766,12 @@ export class WaterfallDataBuilder {
 
         data2.toolTipValue1Formatted = this.ctx.formatter.label(data2);
         data2.toolTipDisplayValue1 = data2.category;
+        // Grand totals of any "Tooltips" measures live on the matrix root node.
+        this.setTooltipMeasures(data2, this.tooltipMeasuresFor(dataView.matrix.rows.root.values));
         data2.childrenCount = 1;
         data2.sortOrderIndex = 1;
-        data2.sortOrderIndexforLimitBreakdown = 1;        
+        data2.sortGroupIndex = 0;
+        data2.sortWithinGroupIndex = Number.MAX_SAFE_INTEGER;
         return data2;
     }
     private getDataForCategory(value: number, numberFormat: string, displayName: string, displayID: string, isPillar: number, selectionId: ISelectionId | null, sortOrderIndex: number, childrenCount: number, toolTipDisplayValue1: string, toolTipDisplayValue2: string | null | undefined, Measure1Value: number | null | undefined, Measure2Value: number | null | undefined): BarChartDataPoint {
@@ -622,7 +784,6 @@ export class WaterfallDataBuilder {
         data2.displayName = displayName;
         data2.selectionId = selectionId;
         data2.sortOrderIndex = sortOrderIndex;
-        data2.sortOrderIndexforLimitBreakdown = sortOrderIndex;
         data2.childrenCount = childrenCount;
         data2.Measure1Value = Measure1Value;
         data2.Measure2Value = Measure2Value;
@@ -633,6 +794,7 @@ export class WaterfallDataBuilder {
         data2.customBarColor = this.getfillColor(data2.isPillar, data2.value);
         data2.customFontColor = this.getLabelFontColor(data2.isPillar, data2.value);
         data2.customLabelPositioning = this.getLabelPosition(data2.isPillar, data2.value);
+        this.applyInsideLabelContrast(data2);
         return data2;
     }
 }

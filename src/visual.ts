@@ -36,6 +36,7 @@ import { ITooltipServiceWrapper, createTooltipServiceWrapper } from "powerbi-vis
 import ISelectionManager = powerbi.extensibility.ISelectionManager;
 import * as d3 from "d3";
 import { VisualSettings, VisualFormattingSettingsModel } from "./settings";
+import { RenderSettings } from "./renderSettings";
 import { FormattingSettingsService } from "powerbi-visuals-utils-formattingmodel";
 import { BarChartDataPoint } from "./dataPoint";
 import { ValueFormatter, gridlineStrokeWidth } from "./valueFormatting";
@@ -44,6 +45,8 @@ import { WaterfallDataBuilder } from "./waterfallData";
 import { BarInteractions } from "./interactions";
 import { ChartRenderer } from "./chartRenderer";
 import { renderLegend } from "./legend";
+import { resolveVisualMode, VisualMode } from "./visualType";
+import { SCROLLBAR_BREATH } from "./constants";
 
 /** Best-effort message extraction from an unknown thrown value. */
 function toErrorMessage(e: unknown): string {
@@ -62,9 +65,9 @@ export class Visual implements IVisual {
     private host: IVisualHost;
     private selectionManager: ISelectionManager;
     private tooltipServiceWrapper: ITooltipServiceWrapper;
-    private visualType!: string;
+    private visualType!: VisualMode;
     private visualUpdateOptions!: VisualUpdateOptions;
-    private scrollbarBreath = 8;
+    private scrollbarBreath = SCROLLBAR_BREATH;
     private events: IVisualEventService;
     private locale: string;
     private colorPalette: powerbi.extensibility.ISandboxExtendedColorPalette;
@@ -135,45 +138,53 @@ export class Visual implements IVisual {
             labelDecimals: this.visualSettings.LabelsFormatting.decimalPlaces,
         });
         this.chartContainer.selectAll('svg').remove();
-        this.legendHeight = renderLegend(this.legendContainer, this.visualSettings);
+        const renderSettings = new RenderSettings(this.visualSettings);
         if (dataView.matrix.rows.levels.length != 1){
             this.visualSettings.chartOrientation.limitBreakdown=false;
+        }
+
+        // Sources fed by the "Tooltips" field well trail the "Values" sources in
+        // `valueSources` (mapping order) and only add rows to the hover tooltip.
+        // Everything not explicitly tagged `tooltips` counts as a measure -- so a
+        // legacy source with no role metadata still counts, but a measure bound
+        // solely to Tooltips (Values empty) does not become a bogus bar.
+        const valueSources = dataView.matrix.valueSources;
+        const measureCount = valueSources.filter(s => !(s.roles && s.roles["tooltips"])).length;
+        if (measureCount === 0) {
+            // Nothing to plot -- fail cleanly rather than let the converters and
+            // the value scale derive NaN from an empty bar list.
+            throw new Error("Multi-Step Waterfall: add a measure to the Values field.");
         }
 
         const builder = new WaterfallDataBuilder({
             options,
             host: this.host,
-            settings: this.visualSettings,
+            renderSettings,
             isHighContrast: this.isHighContrast,
             colorPalette: this.colorPalette,
             formatter: this.formatter,
+            measureCount,
         });
         const levels = dataView.matrix.rows.levels.length;
-        const sources = dataView.matrix.valueSources.length;
-        let allData: BarChartDataPoint[][];
-        if (levels === 0) {
-            this.visualType = "static";
-            allData = [builder.buildStatic()];
-        } else if (levels === 1 && sources === 1) {
-            this.visualType = "staticCategory";
-            allData = [builder.buildStaticCategory()];
-        } else if (sources === 1) {
-            this.visualType = "drillableCategory";
-            allData = builder.buildDrillableCategory();
-        } else {
-            this.visualType = "drillable";
-            allData = builder.buildDrillable();
-        }
+        const mode = resolveVisualMode(levels, measureCount);
+        const allData = mode.build(builder);
+        this.visualType = mode;
         this.barChartData = allData[allData.length - 1];
+
+        // Render the legend once the bars are known: every swatch is derived
+        // from the bars that were actually produced (a Total swatch only when a
+        // pillar exists, "Other" only when the bucket bar exists, etc.).
+        this.legendHeight = renderLegend(this.legendContainer, renderSettings, this.barChartData);
 
         this.interactions.configure({ allowInteractions: true, isHighContrast: this.isHighContrast });
         new ChartRenderer({
             chartContainer: this.chartContainer,
             orientationName: this.visualSettings.chartOrientation.orientation == "Horizontal" ? "Horizontal" : "Vertical",
-            settings: this.visualSettings,
+            renderSettings,
             barChartData: this.barChartData,
             allData,
             dataView,
+            measureCount,
             host: this.host,
             formatter: this.formatter,
             interactions: this.interactions,

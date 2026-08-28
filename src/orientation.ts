@@ -1,4 +1,5 @@
 import * as d3 from "d3";
+import { BAND_PADDING } from "./constants";
 
 export type OrientationName = "Vertical" | "Horizontal";
 
@@ -20,8 +21,6 @@ export class Orientation {
      *  Vertical: decreasing (value up = pixel up). Horizontal: increasing (value right = pixel right). */
     public readonly cross: d3.ScaleLinear<number, number>;
 
-    /** Field on the Visual that accumulates the category-axis outer edge while drawing levels. */
-    public readonly edgeField: "findBottom" | "findRightHorizontal";
     /** Field on the Visual that holds the measured cross-axis extent (width for vertical, height for horizontal). */
     public readonly crossAxisExtentField: "yAxisWidth" | "yAxisHeightHorizontal";
 
@@ -39,11 +38,9 @@ export class Orientation {
 
         if (name === "Vertical") {
             this.cross = d3.scaleLinear().domain([geo.minValue, geo.maxValue]).range([geo.innerHeight, 0]);
-            this.edgeField = "findBottom";
             this.crossAxisExtentField = "yAxisWidth";
         } else {
             this.cross = d3.scaleLinear().domain([geo.minValue, geo.maxValue]).range([0, geo.innerWidth + geo.xAxisPosition - geo.scrollbarBreath]);
-            this.edgeField = "findRightHorizontal";
             this.crossAxisExtentField = "yAxisHeightHorizontal";
         }
     }
@@ -59,7 +56,7 @@ export class Orientation {
     public get scrollOrient(): "x" | "y" { return this.name === "Vertical" ? "x" : "y"; }
 
     public mainBand(domain: string[]): d3.ScaleBand<string> {
-        return d3.scaleBand().domain(domain).range(this.mainRange).padding(0.2);
+        return d3.scaleBand().domain(domain).range(this.mainRange).padding(BAND_PADDING);
     }
     public mainAxis(scale: d3.ScaleBand<string>): d3.Axis<any> {
         const axis = this.name === "Vertical" ? d3.axisBottom(scale) : d3.axisLeft(scale);
@@ -112,6 +109,15 @@ export class Orientation {
         if (this.name === "Vertical") {
             if ((d.isPillar == 1 || i == 0) && d.value < 0) {
                 return this.maxValue >= 0 ? this.cross(0) : this.cross(this.maxValue);
+            }
+            if (d.isPillar == 1 || i == 0) {
+                // A pillar (and the very first bar) is anchored to the value axis,
+                // not to the running cumulative: its far edge is simply at its own
+                // value, and `barCrossSize` carries it back to the baseline.
+                // Subtracting `breakdown` here drew the total pillar ~10x too tall;
+                // `cross(0) - barCrossSize` was wrong for a truncated positive
+                // domain (it lands on the off-domain, extrapolated zero).
+                return this.cross(d.value);
             }
             return this.cross(d.value) - this.breakdown(i, data);
         }

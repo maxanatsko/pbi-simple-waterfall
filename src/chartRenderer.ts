@@ -5,30 +5,43 @@ import DataViewMatrix = powerbi.DataViewMatrix;
 import ISelectionId = powerbi.visuals.ISelectionId;
 import { ITooltipServiceWrapper } from "powerbi-visuals-utils-tooltiputils";
 import * as d3 from "d3";
-import { VisualSettings } from "./settings";
+import { RenderSettings } from "./renderSettings";
 import { BarChartDataPoint } from "./dataPoint";
 import { Orientation, OrientationName } from "./orientation";
-import { ValueFormatter, gridlineStrokeWidth } from "./valueFormatting";
+import { ValueFormatter } from "./valueFormatting";
 import { getMatrixLevelsAt } from "./matrix";
+import {
+    BAND_PADDING,
+    MARGIN_BUMP,
+    MAX_AXIS_STROKE_PT,
+    Y_AXIS_TICK_COUNT,
+    SCROLLBAR_TRACK_FILL,
+    SCROLLBAR_TRACK_OPACITY,
+    SCROLLBAR_THUMB_FILL,
+    SCROLLBAR_THUMB_OPACITY
+} from "./constants";
 import { BarInteractions } from "./interactions";
 import { buildValueTooltip, buildCategoryTooltip, tooltipSelectionId } from "./tooltip";
+import { VisualMode } from "./visualType";
 
 /** Everything the render pipeline reads off the Visual. Built once per
  *  `update()`; the renderer owns all the mutable layout state internally. */
 export interface ChartRenderContext {
     chartContainer: d3.Selection<any, any, any, any>;
     orientationName: OrientationName;
-    settings: VisualSettings;
+    renderSettings: RenderSettings;
     barChartData: BarChartDataPoint[];
     allData: BarChartDataPoint[][];
     dataView: DataView & { matrix: DataViewMatrix };
+    /** Count of leading `valueSources` bound to "Values" (the rest are "Tooltips"). */
+    measureCount: number;
     host: IVisualHost;
     formatter: ValueFormatter;
     interactions: BarInteractions;
     tooltipServiceWrapper: ITooltipServiceWrapper;
     isHighContrast: boolean;
     colorPalette: powerbi.extensibility.ISandboxExtendedColorPalette;
-    visualType: string;
+    visualType: VisualMode;
     width: number;
     height: number;
     legendHeight: number;
@@ -67,6 +80,21 @@ export class ChartRenderer {
         this.renderCore(this.ctx.allData);
     }
 
+    /** Re-create `this.orientation` from the current `innerWidth` / `innerHeight`.
+     *  The plot rectangle is only known in stages (value-axis width, then the
+     *  category-label block), so the orientation -- which owns the band + value
+     *  scales every draw call reads -- has to be rebuilt as those become known. */
+    private rebuildOrientation(): void {
+        this.orientation = new Orientation(this.orientationName, {
+            minValue: this.minValue,
+            maxValue: this.maxValue,
+            innerWidth: this.innerWidth,
+            innerHeight: this.innerHeight,
+            xAxisPosition: this.xAxisPosition,
+            scrollbarBreath: this.ctx.scrollbarBreath,
+        });
+    }
+
     private renderCore(allData: any): void {
         const o = this.orientationName;
 
@@ -82,48 +110,94 @@ export class ChartRenderer {
 
         this.margin = o == "Horizontal"
             ? {
-                top: this.ctx.settings.margins.topMargin,
-                right: this.ctx.settings.margins.rightMargin + 20,
-                bottom: this.ctx.settings.margins.bottomMargin + 5,
-                left: this.ctx.settings.margins.leftMargin
+                top: this.ctx.renderSettings.marginTop,
+                right: this.ctx.renderSettings.marginRight + MARGIN_BUMP,
+                bottom: this.ctx.renderSettings.marginBottom + 5,
+                left: this.ctx.renderSettings.marginLeft
             }
             : {
-                top: this.ctx.settings.margins.topMargin + 20,
-                right: this.ctx.settings.margins.rightMargin,
-                bottom: this.ctx.settings.margins.bottomMargin,
-                left: this.ctx.settings.margins.leftMargin
+                top: this.ctx.renderSettings.marginTop + MARGIN_BUMP,
+                right: this.ctx.renderSettings.marginRight,
+                bottom: this.ctx.renderSettings.marginBottom,
+                left: this.ctx.renderSettings.marginLeft
             };
         this.innerWidth = this.width - this.margin.left - this.margin.right;
         this.innerHeight = this.height - this.margin.top - this.margin.bottom;
         this.adjustmentConstant = this.findXaxisAdjustment(this.ctx.barChartData);
 
-        this.getMinMaxValue();
-        this.gScrollable = this.svg.append('g');
-        this.measureCrossAxis(this.gScrollable);
+        const { minValue, maxValue, yScaleTickValues } = this.computeMinMaxValue(
+            this.ctx.barChartData,
+            this.ctx.renderSettings,
+            this.innerHeight);
+        this.minValue = minValue;
+        this.maxValue = maxValue;
+        this.yScaleTickValues = yScaleTickValues;
+        this.orientation = new Orientation(this.orientationName, {
+            minValue: this.minValue,
+            maxValue: this.maxValue,
+            innerWidth: this.innerWidth,
+            innerHeight: this.innerHeight,
+            xAxisPosition: this.xAxisPosition,
+            scrollbarBreath: this.ctx.scrollbarBreath
+        });
+        this.persistYAxisRange(minValue, maxValue);
 
+        this.gScrollable = this.svg.append('g');
+        const crossAxisExtent = this.measureCrossAxisExtent(
+            this.gScrollable,
+            this.orientation,
+            this.yScaleTickValues,
+            this.ctx.renderSettings);
+        this[this.orientation.crossAxisExtentField] = crossAxisExtent;
+
+        // The plot rectangle is known in stages: the value-axis label column/strip,
+        // then (via checkBarWidth) a possible scroll-mode expansion, then the
+        // category-label block. Reserve each as it becomes known and rebuild the
+        // orientation so every consumer -- the bar-width check, the category axis,
+        // the bars and labels -- reads the same scale.
+        let findRightHorizontal = 0;
         if (o == "Vertical") {
             this.svgYAxis.attr("width", this.margin.left + this.yAxisWidth);
             this.width = this.width - this.margin.left - this.yAxisWidth - 5;
             this.svg.attr("width", this.width);
             this.svg.attr("transform", `translate(${this.margin.left + this.yAxisWidth},${0})`);
-            this.checkBarWidth();
-            this.createCategoryAxis(this.gScrollable, allData);
-            this.createCrossAxis(this.svgYAxis, this.margin.left + this.yAxisWidth);
-            this.createCrossAxis(this.gScrollable, 0);
+            // Reserve the value-axis label column + a 5px seam (the left margin is
+            // already out of innerWidth) and half a band step for the outermost
+            // category label, which is centred on its band and wider than it.
+            const cats = this.ctx.barChartData.length || 1;
+            const endLabelGutter = Math.min((this.innerWidth / (cats + BAND_PADDING)) / 2, 40);
+            this.innerWidth = this.innerWidth - crossAxisExtent - 5 - endLabelGutter;
+            this.rebuildOrientation();
+            this.checkBarWidth();          // sees the real plot width; may expand innerWidth for scrolling
+            this.rebuildOrientation();     // fold any scroll-mode expansion into the scale
+            findRightHorizontal = this.applyCategoryAxisLayout(this.gScrollable, allData);
+            // applyCategoryAxisLayout has measured the category-label block and
+            // shrunk this.innerHeight. Rebuild so the value scale's zero lands on
+            // the category-axis line rather than the container's bottom edge.
+            this.rebuildOrientation();
+            this.createCrossAxis(this.svgYAxis, this.margin.left + this.yAxisWidth, findRightHorizontal);
+            this.createCrossAxis(this.gScrollable, 0, findRightHorizontal);
         } else {
             this.svg.attr("width", this.width);
             this.innerHeight = this.innerHeight - this.yAxisHeightHorizontal;
             this.svg.attr("height", this.innerHeight);
-            this.checkBarWidth();
-            this.createCategoryAxis(this.gScrollable, allData);
+            this.rebuildOrientation();     // row band scale over the strip-reduced height
+            this.checkBarWidth();          // sees the real plot height; may expand innerHeight for scrolling
+            this.rebuildOrientation();     // fold any scroll-mode expansion into the scale
+            findRightHorizontal = this.applyCategoryAxisLayout(this.gScrollable, allData);
+            // applyCategoryAxisLayout has measured the (left) category-label block
+            // as this.xAxisPosition. Rebuild so the value scale reserves that width
+            // instead of running the full container width and pushing the domain
+            // maximum -- and the tall pillars -- off the right edge.
+            this.rebuildOrientation();
             this.svgYAxis.attr("width", this.innerWidth + 5);
             this.svgYAxis.attr("height", this.yAxisHeightHorizontal);
-            this.createCrossAxis(this.svgYAxis, 0);
-            this.createCrossAxis(this.gScrollable, this.innerHeight);
+            this.createCrossAxis(this.svgYAxis, 0, findRightHorizontal);
+            this.createCrossAxis(this.gScrollable, this.innerHeight, findRightHorizontal);
         }
 
-        this.createBars(this.gScrollable, this.ctx.barChartData);
-        this.createLabels(this.gScrollable);
+        this.createBars(this.gScrollable, this.ctx.barChartData, findRightHorizontal);
+        this.createLabels(this.gScrollable, findRightHorizontal);
 
         if (o == "Horizontal") {
             this.svg.attr('transform', `translate(${this.margin.left},${this.margin.top})`);
@@ -133,64 +207,87 @@ export class ChartRenderer {
 
     private xValue = (d: BarChartDataPoint) => d.category;
 
-    private getMinMaxValue() {
-        if (this.ctx.settings.yAxisFormatting.YAxisDataPointOption == "Range"
-            && this.ctx.settings.yAxisFormatting.YAxisDataPointRangeStart != 0 && this.ctx.settings.yAxisFormatting.YAxisDataPointRangeEnd != 0) {
-            this.minValue = this.ctx.settings.yAxisFormatting.YAxisDataPointRangeStart;
-            this.maxValue = this.ctx.settings.yAxisFormatting.YAxisDataPointRangeEnd;
+    private computeMinMaxValue(
+        data: BarChartDataPoint[],
+        rs: RenderSettings,
+        innerHeight: number,
+    ): { minValue: number; maxValue: number; yScaleTickValues: number[] } {
+        let minValue: number;
+        let maxValue: number;
+        if (rs.yAxisDataPointOption == "Range"
+            && rs.yAxisRangeStart != 0 && rs.yAxisRangeEnd != 0) {
+            minValue = rs.yAxisRangeStart;
+            maxValue = rs.yAxisRangeEnd;
         } else {
-            const { min, max } = this.cumulativeExtent(this.ctx.barChartData);
-            this.minValue = min;
-            this.maxValue = max;
+            const { min, max } = this.cumulativeExtent(data);
+            minValue = min;
+            maxValue = max;
         }
 
-        var yScale = d3.scaleLinear()
-            .domain([this.minValue, this.maxValue])
-            .range([this.innerHeight, 0]);
+        const yScale = d3.scaleLinear()
+            .domain([minValue, maxValue])
+            .range([innerHeight, 0]);
 
-        var ticksCount = 5;
-        var staticYscaleTIcks = yScale.ticks(ticksCount);
+        const ticksCount = Y_AXIS_TICK_COUNT;
+        const yScaleTickValues = yScale.ticks(ticksCount);
 
         //realigning the xaxis to the first tick value of yaxis    
-        if (this.minValue != 0) {
-            if (this.minValue > 0) {
-                var firstTickValueforPositive = staticYscaleTIcks[0] - (staticYscaleTIcks[1] - staticYscaleTIcks[0]);
-                this.minValue = firstTickValueforPositive;
-                staticYscaleTIcks.unshift(firstTickValueforPositive);
+        if (minValue != 0) {
+            if (minValue > 0) {
+                const firstTickValueforPositive = yScaleTickValues[0] - (yScaleTickValues[1] - yScaleTickValues[0]);
+                minValue = firstTickValueforPositive;
+                yScaleTickValues.unshift(firstTickValueforPositive);
             }
-            if (this.maxValue < 0) {
-                var firstTickValueforNegative = staticYscaleTIcks[staticYscaleTIcks.length - 1] - (staticYscaleTIcks[staticYscaleTIcks.length - 2] - staticYscaleTIcks[staticYscaleTIcks.length - 1]);
-                this.maxValue = firstTickValueforNegative;
-                staticYscaleTIcks.push(firstTickValueforNegative);
+            if (maxValue < 0) {
+                const firstTickValueforNegative = yScaleTickValues[yScaleTickValues.length - 1] - (yScaleTickValues[yScaleTickValues.length - 2] - yScaleTickValues[yScaleTickValues.length - 1]);
+                maxValue = firstTickValueforNegative;
+                yScaleTickValues.push(firstTickValueforNegative);
             }
         }
-        if (this.maxValue > 0) {
-            var lastTickValueforPositive = staticYscaleTIcks[staticYscaleTIcks.length - 1] + (staticYscaleTIcks[staticYscaleTIcks.length - 1] - staticYscaleTIcks[staticYscaleTIcks.length - 2]);
-            this.maxValue = lastTickValueforPositive;
-            staticYscaleTIcks.push(lastTickValueforPositive);
+        if (maxValue > 0) {
+            const lastTickValueforPositive = yScaleTickValues[yScaleTickValues.length - 1] + (yScaleTickValues[yScaleTickValues.length - 1] - yScaleTickValues[yScaleTickValues.length - 2]);
+            maxValue = lastTickValueforPositive;
+            yScaleTickValues.push(lastTickValueforPositive);
         }
-        if (this.minValue < 0) {
-            var lastTickValueforNegative = staticYscaleTIcks[0] + (staticYscaleTIcks[0] - staticYscaleTIcks[1]);
-            var lastTickValueforNegative2 = staticYscaleTIcks[0] + (staticYscaleTIcks[0] - staticYscaleTIcks[1]) * 2;
+        if (minValue < 0) {
+            const lastTickValueforNegative = yScaleTickValues[0] + (yScaleTickValues[0] - yScaleTickValues[1]);
+            const lastTickValueforNegative2 = yScaleTickValues[0] + (yScaleTickValues[0] - yScaleTickValues[1]) * 2;
             //add 2 steps to have enough space between the xAxis and the labels.
-            this.minValue = lastTickValueforNegative2;
-            staticYscaleTIcks.unshift(lastTickValueforNegative, lastTickValueforNegative2);
+            minValue = lastTickValueforNegative2;
+            yScaleTickValues.unshift(lastTickValueforNegative, lastTickValueforNegative2);
         }
 
+        return { minValue, maxValue, yScaleTickValues };
+    }
 
-        this.yScaleTickValues = staticYscaleTIcks
-        this.ctx.settings.yAxisFormatting.YAxisDataPointRangeStart = this.minValue;
-        this.ctx.settings.yAxisFormatting.YAxisDataPointRangeEnd = this.maxValue;
+    private persistYAxisRange(minValue: number, maxValue: number): void {
+        this.ctx.renderSettings.persistYAxisRange(minValue, maxValue);
+    }
 
-        this.orientation = new Orientation(this.orientationName, {
-            minValue: this.minValue,
-            maxValue: this.maxValue,
-            innerWidth: this.innerWidth,
-            innerHeight: this.innerHeight,
-            xAxisPosition: this.xAxisPosition,
-            scrollbarBreath: this.ctx.scrollbarBreath
-        });
-
+    private applyCategoryAxisLayout(gParent: any, allDatatemp: any): number {
+        if (!this.ctx.renderSettings.xAxisShow) {
+            // X-axis hidden: draw no category labels / separators and reclaim the
+            // strip they would have occupied.
+            this.xAxisPosition = 0;
+            if (this.orientation.scrollOrient === "x") {
+                this.innerHeight = this.height - this.margin.top - this.margin.bottom
+                    - this.ctx.scrollbarBreath + this.ctx.legendHeight;
+            }
+            return 0;
+        }
+        const result = this.createCategoryAxis(
+            gParent,
+            allDatatemp,
+            this.orientation,
+            this.innerWidth,
+            this.innerHeight,
+            this.height,
+            this.margin,
+            this.ctx.scrollbarBreath,
+            this.ctx.legendHeight);
+        this.innerHeight = result.innerHeight;
+        this.xAxisPosition = result.xAxisPosition;
+        return result.findRightHorizontal;
     }
     private styledAxisGroup(parent: any, settings: { fontSize: number; fontFamily: string; fontColor: string }, axisClass: string) {
         return parent.append('g')
@@ -206,64 +303,78 @@ export class ChartRenderer {
         }
         return selection;
     }
-    private measureCrossAxis(gParent: any) {
-        const o = this.orientation;
-        var g = gParent.append('g').attr('class', 'yAxisParentGroup');
+    private measureCrossAxisExtent(
+        gParent: any,
+        o: Orientation,
+        yScaleTickValues: number[],
+        rs: RenderSettings,
+    ): number {
+        const g = gParent.append('g').attr('class', 'yAxisParentGroup');
 
-        var yAxisScale = o.crossAxisGenerator().tickValues(this.yScaleTickValues);
+        const yAxisScale = o.crossAxisGenerator().tickValues(yScaleTickValues);
 
-        if (this.ctx.settings.yAxisFormatting.show) {
-            var yAxis = this.styledAxisGroup(g, this.ctx.settings.yAxisFormatting, 'myYaxis');
+        let extent = 0;
+        if (rs.yAxisShow) {
+            const yAxis = this.styledAxisGroup(g, {
+                fontSize: rs.yAxisFontSize,
+                fontFamily: rs.yAxisFontFamily,
+                fontColor: rs.yAxisFontColor,
+            }, 'myYaxis');
 
             yAxisScale.tickFormat(d => this.formatValueForYAxis(d));
 
             yAxis.call(yAxisScale);
 
             this.applyGridlineStyle(yAxis.selectAll('path'), 'black', "0pt");
-            if (this.ctx.settings.yAxisFormatting.showGridLine) {
-
-                this.applyGridlineStyle(yAxis.selectAll('line'), this.ctx.settings.yAxisFormatting.gridLineColor, gridlineStrokeWidth(this.ctx.settings, "y") / 10 + "pt");
+            if (rs.yAxisShowGridLine) {
+                this.applyGridlineStyle(yAxis.selectAll('line'), rs.yAxisGridLineColor, rs.yGridlineStrokeWidth / 10 + "pt");
             } else {
-                this.applyGridlineStyle(yAxis.selectAll('line'), this.ctx.settings.yAxisFormatting.gridLineColor, "0pt");
+                this.applyGridlineStyle(yAxis.selectAll('line'), rs.yAxisGridLineColor, "0pt");
             }
 
             // adjust the chart area according to the width/height of the cross axis
             const node = yAxis.node()!;
-            this[o.crossAxisExtentField] = o.name === "Vertical"
+            extent = o.name === "Vertical"
                 ? node.getBoundingClientRect().width
                 : node.getBoundingClientRect().height;
-            if (o.name === "Vertical") {
-                this.innerWidth = this.innerWidth - this.yAxisWidth;
-            }
         }
         g.remove();
+        return extent;
     }
 
-    private createCrossAxis(gParent: any, adjust: any) {
+    private createCrossAxis(gParent: any, adjust: any, findRightHorizontal: number) {
         const o = this.orientation;
         var g = gParent.append('g').attr('class', 'yAxisParentGroup');
 
         var yAxisScale = o.crossAxisGenerator().tickValues(this.yScaleTickValues);
 
-        if (this.ctx.settings.yAxisFormatting.show) {
-            var yAxis = this.styledAxisGroup(g, this.ctx.settings.yAxisFormatting, 'myYaxis');
+        if (this.ctx.renderSettings.yAxisShow) {
+            var yAxis = this.styledAxisGroup(g, {
+                fontSize: this.ctx.renderSettings.yAxisFontSize,
+                fontFamily: this.ctx.renderSettings.yAxisFontFamily,
+                fontColor: this.ctx.renderSettings.yAxisFontColor,
+            }, 'myYaxis');
             yAxisScale.tickFormat(d => this.formatValueForYAxis(d));
 
             yAxis.call(yAxisScale);
-            if (!this.ctx.settings.yAxisFormatting.showYAxisValues) {
+            if (!this.ctx.renderSettings.yAxisShowValues) {
                 yAxis.selectAll('text').style('visibility', 'hidden');
             }
             this.applyGridlineStyle(yAxis.selectAll('path'), 'black', "0pt");
 
-            if (this.ctx.settings.yAxisFormatting.showGridLine) {
-                this.applyGridlineStyle(yAxis.selectAll('line'), this.ctx.settings.yAxisFormatting.gridLineColor, gridlineStrokeWidth(this.ctx.settings, "y") / 10 + "pt");
+            if (this.ctx.renderSettings.yAxisShowGridLine) {
+                this.applyGridlineStyle(yAxis.selectAll('line'), this.ctx.renderSettings.yAxisGridLineColor, this.ctx.renderSettings.yGridlineStrokeWidth / 10 + "pt");
             } else {
-                this.applyGridlineStyle(yAxis.selectAll('line'), this.ctx.settings.yAxisFormatting.gridLineColor, "0pt");
+                this.applyGridlineStyle(yAxis.selectAll('line'), this.ctx.renderSettings.yAxisGridLineColor, "0pt");
             }
-            if (this.ctx.settings.yAxisFormatting.showZeroAxisGridLine) {
+            if (this.ctx.renderSettings.yAxisShowZeroGridLine) {
+                // Floor at 1pt: at the /10 scale the default width (1) resolves to
+                // 0.1pt and the zero line -- which also sits under the category
+                // axis baseline -- is invisible, so the toggle looked inert.
+                const zeroPt = Math.max(1, this.ctx.renderSettings.yAxisZeroLineStrokeWidth / 5);
                 yAxis.selectAll('line').each((d: any, i: number, nodes: any) => {
                     if (d == 0) {
-                        this.applyGridlineStyle(d3.select(nodes[i]), this.ctx.settings.yAxisFormatting.zeroLineColor, this.ctx.settings.yAxisFormatting.zeroLineStrokeWidth / 10 + "pt");
+                        this.applyGridlineStyle(d3.select(nodes[i]), this.ctx.renderSettings.yAxisZeroLineColor, zeroPt + "pt");
                     }
                 });
             }
@@ -273,15 +384,15 @@ export class ChartRenderer {
         }
         var transform = o.name === "Vertical"
             ? `translate(${adjust},${this.margin.top})`
-            : `translate(${-this.findRightHorizontal},${adjust})`;
+            : `translate(${-findRightHorizontal},${adjust})`;
         g.attr('transform', transform);
     }
-    private createLabels(gParent: any) {
+    private createLabels(gParent: any, findRightHorizontal: number) {
         const o = this.orientation;
         var g = gParent.append('g').attr('class', 'myBarLabels');
 
         var xScale = o.mainBand(this.ctx.barChartData.map(this.xValue));
-        if (this.ctx.settings.LabelsFormatting.show) {
+        if (this.ctx.renderSettings.labelsShow) {
 
             var pillarLabelsg = g.selectAll('.labels')
                 .data(this.ctx.barChartData)
@@ -297,11 +408,25 @@ export class ChartRenderer {
             var pillarLabelsText = pillarLabels
                 .text((d: any) => labelFormatting(d));
 
-            pillarLabelsText.style('font-size', this.ctx.settings.LabelsFormatting.fontSize + "pt")
-                .style("font-family", this.ctx.settings.LabelsFormatting.fontFamily)
+            pillarLabelsText.style('font-size', this.ctx.renderSettings.labelsFontSize + "pt")
+                .style("font-family", this.ctx.renderSettings.labelsFontFamily)
                 .style('fill', (d: any) => {
                     return d.customFontColor;
                 });
+            // Halo behind "inside" labels: a short bar lets the label spill onto
+            // the plain plot background, where the contrast-adjusted (often white)
+            // text would otherwise vanish. The bar-coloured outline separates it.
+            pillarLabelsText.each(function (this: SVGElement, d: any) {
+                const inside = typeof d.customLabelPositioning === "string"
+                    && d.customLabelPositioning.indexOf("Inside") === 0;
+                if (inside && d.customBarColor) {
+                    d3.select(this)
+                        .style('stroke', d.customBarColor)
+                        .style('stroke-width', '2px')
+                        .style('stroke-linejoin', 'round')
+                        .style('paint-order', 'stroke');
+                }
+            });
 
             var mainPos = o.mainPos;
             pillarLabelsg.attr('transform', (d: any, i: number, nodes: any) => {
@@ -311,7 +436,7 @@ export class ChartRenderer {
             })
 
         }
-        o.labelFit(g.selectAll(".labels"), o.name === "Vertical" ? 0 : this.width + this.findRightHorizontal - this.ctx.scrollbarBreath);
+        o.labelFit(g.selectAll(".labels"), o.name === "Vertical" ? 0 : this.width + findRightHorizontal - this.ctx.scrollbarBreath);
         this.ctx.tooltipServiceWrapper.addTooltip(g.selectAll('.labels'),
             (dataPoint: any) => buildValueTooltip(dataPoint),
             // no identity-based tooltips here; the util's identity getter is optional
@@ -321,9 +446,9 @@ export class ChartRenderer {
             g.selectAll(".labels")
                 .call(this.labelAlignment, xScale.bandwidth());
         }
-        g.attr('transform', o.scrollableTransform(this.findRightHorizontal, this.margin.top));
+        g.attr('transform', o.scrollableTransform(findRightHorizontal, this.margin.top));
     }
-    private createBars(gParent: any, data: any) {
+    private createBars(gParent: any, data: any, findRightHorizontal: number) {
         const o = this.orientation;
         var g = gParent.append('g').attr('class', 'myBars');
 
@@ -346,19 +471,30 @@ export class ChartRenderer {
         }
 
         //line joinning the bars
-        if (this.ctx.settings.yAxisFormatting.joinBars) {
+        if (this.ctx.renderSettings.yAxisJoinBars) {
             const mainAttr = o.mainPos;
             const crossAttr = o.crossPosAttr;
+            // The connector sits at the bar edge that meets the previous bar --
+            // the shared cumulative level. `base` is that bar's near-origin edge:
+            // its top for vertical (higher value = smaller y), its left for
+            // horizontal (higher value = larger x). `atHighValueEnd` is true when
+            // the shared level is the bar's higher-value edge (a decreasing step,
+            // or a pillar). So we add `barCrossSize` for the high-value edge in
+            // horizontal, and for the low-value edge in vertical.
             const connectorCross = (node: any, d: any, i: number) => {
                 const base = parseFloat(d3.select(node).attr(crossAttr));
-                const cond = ((d.value < 0 && !d.isPillar) || (d.value > 0 && d.isPillar));
-                return cond ? base : base + o.barCrossSize(d, i, this.ctx.barChartData);
+                const atHighValueEnd = ((d.value < 0 && !d.isPillar) || (d.value > 0 && d.isPillar));
+                const addSize = o.name === "Vertical" ? !atHighValueEnd : atHighValueEnd;
+                return addSize ? base + o.barCrossSize(d, i, this.ctx.barChartData) : base;
             };
+            // Floor at 1pt: the /10 scale makes the default width (1) an
+            // invisible 0.1pt, so "Join Bars" looked like it did nothing.
+            const joinStrokePt = Math.max(1, this.ctx.renderSettings.yAxisJoinBarsStrokeWidth / 10);
             this.bars.each((d: any, i: number, nodes: any) => {
                 if (i != 0) {
                     g.append('line')
-                        .style("stroke", this.ctx.settings.yAxisFormatting.joinBarsColor)
-                        .style("stroke-width", this.ctx.settings.yAxisFormatting.joinBarsStrokeWidth / 10 + "pt")
+                        .style("stroke", this.ctx.renderSettings.yAxisJoinBarsColor)
+                        .style("stroke-width", joinStrokePt + "pt")
                         .attr(mainAttr + "1", parseFloat(d3.select(nodes[i - 1]).attr(mainAttr)) + xScale.bandwidth())
                         .attr(crossAttr + "1", connectorCross(nodes[i], d, i))
                         .attr(mainAttr + "2", parseFloat(d3.select(nodes[i]).attr(mainAttr)))
@@ -372,7 +508,7 @@ export class ChartRenderer {
 
         //reset selections when the visual is re-drawn
         this.ctx.interactions.resyncOnRedraw(this.bars);
-        if (this.ctx.visualType == "drillable" || this.ctx.visualType == "staticCategory" || this.ctx.visualType == "drillableCategory") {
+        if (this.ctx.visualType.isSelectable) {
             this.ctx.interactions.wireClick(this.bars);
         }
 
@@ -380,11 +516,15 @@ export class ChartRenderer {
             (dataPoint: any) => buildValueTooltip(dataPoint),
             (dataPoint: any) => tooltipSelectionId(dataPoint));
 
-        g.attr('transform', o.scrollableTransform(this.findRightHorizontal, this.margin.top));
+        g.attr('transform', o.scrollableTransform(findRightHorizontal, this.margin.top));
 
     }
     private lineWidth(d: any, i: number) {
-        var defaultwidth = gridlineStrokeWidth(this.ctx.settings, "x") / 10 + "pt";
+        // Cap the category-cell separators: the single "Stroke Width" control
+        // also drives the axis baseline, and past ~2pt the dividers read as a
+        // broken grid rather than a rule.
+        const pt = Math.min(this.ctx.renderSettings.xGridlineStrokeWidth / 10, MAX_AXIS_STROKE_PT);
+        var defaultwidth = pt + "pt";
         if (d.displayName == "" || i == 0) {
             defaultwidth = "0" + "pt";
         }
@@ -403,7 +543,7 @@ export class ChartRenderer {
     }
     private findXaxisAdjustment = (data: any): number => {
         var returnvalue = 0;
-        if (this.ctx.settings.yAxisFormatting.YAxisDataPointOption == "Auto" || this.ctx.settings.yAxisFormatting.YAxisDataPointOption == "Range") {
+        if (this.ctx.renderSettings.yAxisDataPointOption == "Auto" || this.ctx.renderSettings.yAxisDataPointOption == "Range") {
 
             /************************************************
                 this function is used to move the Yaxis to reduce the pillars size so that they don't start from zero, if pillars are all positive or negative
@@ -464,16 +604,15 @@ export class ChartRenderer {
         }
         return { min, max };
     }
-    private findBottom = 0;
-    private findRightHorizontal = 0;
+
 
     private checkBarWidth(): void {
         const o = this.orientation;
-        if (!this.ctx.settings.xAxisFormatting.fitToWidth) {
+        if (!this.ctx.renderSettings.xAxisFitToWidth) {
             var xScale = o.mainBand(this.ctx.barChartData.map(this.xValue));
             var currentBarWidth = xScale.step();
-            if (currentBarWidth < this.ctx.settings.xAxisFormatting.barWidth) {
-                currentBarWidth = this.ctx.settings.xAxisFormatting.barWidth;
+            if (currentBarWidth < this.ctx.renderSettings.xAxisBarWidth) {
+                currentBarWidth = this.ctx.renderSettings.xAxisBarWidth;
 
                 var scrollBarGroup = this.svg.append('g');
                 var scrollbarContainer = scrollBarGroup.append('rect')
@@ -481,8 +620,8 @@ export class ChartRenderer {
                     .attr('height', o.scrollOrient == "x" ? this.ctx.scrollbarBreath : this.innerHeight)
                     .attr('x', o.scrollOrient == "x" ? 0 : this.width - this.ctx.scrollbarBreath - this.margin.left)
                     .attr('y', o.scrollOrient == "x" ? this.height - this.ctx.scrollbarBreath : 0)
-                    .attr('fill', '#e1e1e1')
-                    .attr('opacity', 0.5)
+                    .attr('fill', SCROLLBAR_TRACK_FILL)
+                    .attr('opacity', SCROLLBAR_TRACK_OPACITY)
                     .attr('rx', 4)
                     .attr('ry', 4);
 
@@ -502,7 +641,7 @@ export class ChartRenderer {
                     var scrollbar: d3.Selection<any, any, any, any> = scrollBarGroup.append('rect')
                         .attr('width', scrollbarwidth).attr('height', this.ctx.scrollbarBreath)
                         .attr('x', 0).attr('y', this.height - this.ctx.scrollbarBreath)
-                        .attr('fill', '#000').attr('opacity', 0.24).attr('rx', 4).attr('ry', 4);
+                        .attr('fill', SCROLLBAR_THUMB_FILL).attr('opacity', SCROLLBAR_THUMB_OPACITY).attr('rx', 4).attr('ry', 4);
                     var scrollBarDragBar = d3.drag().on("start", (event) => {
                         dragStartPosition = event.x;
                         dragScrollBarXStartposition = parseInt(scrollbar.attr('x'));
@@ -531,7 +670,7 @@ export class ChartRenderer {
                     var scrollbar: d3.Selection<any, any, any, any> = scrollBarGroup.append('rect')
                         .attr('width', this.ctx.scrollbarBreath).attr('height', scrollbarHeight)
                         .attr('x', this.width - this.ctx.scrollbarBreath - this.margin.left).attr('y', 0)
-                        .attr('fill', '#000').attr('opacity', 0.24).attr('rx', 4).attr('ry', 4);
+                        .attr('fill', SCROLLBAR_THUMB_FILL).attr('opacity', SCROLLBAR_THUMB_OPACITY).attr('rx', 4).attr('ry', 4);
                     var scrollBarDragBar = d3.drag().on("start", (event) => {
                         dragStartPosition = event.y;
                         dragScrollBarXStartposition = parseInt(scrollbar.attr('y'));
@@ -559,8 +698,17 @@ export class ChartRenderer {
         }
     }
 
-    private createCategoryAxis(gParent: any, allDatatemp: any): void {
-        const o = this.orientation;
+    private createCategoryAxis(
+        gParent: any,
+        allDatatemp: any,
+        o: Orientation,
+        innerWidth: number,
+        innerHeight: number,
+        height: number,
+        margin: { top: number; right: number; bottom: number; left: number },
+        scrollbarBreath: number,
+        legendHeight: number,
+    ): { innerHeight: number; findRightHorizontal: number; xAxisPosition: number } {
         var g = gParent.append('g').attr('class', 'xAxisParentGroup');
         var myAxisParentHeight = 0;
         const dataView = this.ctx.dataView;
@@ -569,17 +717,18 @@ export class ChartRenderer {
         var levels = allDatatemp.length;
         var xScale;
         var xBaseScale = o.mainBand(allDatatemp[allDatatemp.length - 1].map(this.xValue));
-        if (dataView.matrix.valueSources.length > 1) {
+        const measureCount = this.ctx.measureCount;
+        if (measureCount > 1) {
             var pillarsCount = 3;
             var fullWidth = o.scrollOrient == "x"
-                ? this.innerWidth - xBaseScale.bandwidth() + (xBaseScale.step() * xBaseScale.padding() * pillarsCount)
-                : this.innerHeight - xBaseScale.bandwidth() + (xBaseScale.step() * xBaseScale.padding() * pillarsCount);
+                ? innerWidth - xBaseScale.bandwidth() + (xBaseScale.step() * xBaseScale.padding() * pillarsCount)
+                : innerHeight - xBaseScale.bandwidth() + (xBaseScale.step() * xBaseScale.padding() * pillarsCount);
             var myBandwidth = fullWidth / allDatatemp[allDatatemp.length - 1].length;
         } else {
             var pillarsCount = 2;
             var fullWidth = o.scrollOrient == "x"
-                ? this.innerWidth - xBaseScale.bandwidth() - (xBaseScale.step() * xBaseScale.padding() * pillarsCount)
-                : this.innerHeight - xBaseScale.bandwidth() - (xBaseScale.step() * xBaseScale.padding() * pillarsCount);
+                ? innerWidth - xBaseScale.bandwidth() - (xBaseScale.step() * xBaseScale.padding() * pillarsCount)
+                : innerHeight - xBaseScale.bandwidth() - (xBaseScale.step() * xBaseScale.padding() * pillarsCount);
             var myBandwidth = fullWidth / (allDatatemp[allDatatemp.length - 1].length - 1);
         }
         for (var allDataIndex = levels - 1; allDataIndex >= 0; allDataIndex--) {
@@ -590,7 +739,7 @@ export class ChartRenderer {
                 xScale = xBaseScale;
                 currData = allDatatemp[allDatatemp.length - 1];
             } else {
-                currData = getMatrixLevelsAt(root, allDataIndex, dataView, this.ctx.host, this.ctx.formatter);
+                currData = getMatrixLevelsAt(root, allDataIndex, dataView, this.ctx.host, this.ctx.formatter, measureCount);
                 xAxisrange.push(0);
                 currData.forEach((element: any) => {
                     currChildCount = currChildCount + myBandwidth * element.childrenCount;
@@ -600,89 +749,99 @@ export class ChartRenderer {
                     .domain(currData.map((displayName, index) => index + displayName))
                     .range(xAxisrange);
             }
-            this[o.edgeField] = 0;
+            let edge = 0;
             var myWidth = currChildCount + myBandwidth;
             if (allDataIndex != (levels - 1)) {
-                if (dataView.matrix.valueSources.length == 1) {
+                if (measureCount == 1) {
                     var myxAxisParent;
-                    this.createAxis(myxAxisParent, g, false, myWidth, 0, xScale, xBaseScale, currData, allDataIndex, levels, xAxisrange, myAxisParentHeight);
+                    edge = this.createAxis(myxAxisParent, g, false, myWidth, 0, xScale, xBaseScale, currData, allDataIndex, levels, xAxisrange, myAxisParentHeight, edge);
                 } else {
-                    for (let index = 1; index < dataView.matrix.valueSources.length; index++) {
+                    for (let index = 1; index < measureCount; index++) {
                         var myxAxisParent;
-                        this.createAxis(myxAxisParent, g, false, myWidth, index, xScale, xBaseScale, currData, allDataIndex, levels, xAxisrange, myAxisParentHeight);
+                        edge = this.createAxis(myxAxisParent, g, false, myWidth, index, xScale, xBaseScale, currData, allDataIndex, levels, xAxisrange, myAxisParentHeight, edge);
                     }
                 }
             } else {
                 var myxAxisParent;
-                this.createAxis(myxAxisParent, g, true, myWidth, 1, xScale, xBaseScale, currData, allDataIndex, levels, xAxisrange, myAxisParentHeight);
+                edge = this.createAxis(myxAxisParent, g, true, myWidth, 1, xScale, xBaseScale, currData, allDataIndex, levels, xAxisrange, myAxisParentHeight, edge);
             }
-            myAxisParentHeight = this[o.edgeField];
+            myAxisParentHeight = edge;
         }
-        g.selectAll('text').each((d: any, i: number, nodes: any) => {
+        var xAxisPosition = this.accumulateAxisEdge(g.selectAll('text'), 0, false);
+        let resultInnerHeight = innerHeight;
+        let findRightHorizontal = 0;
+        if (o.scrollOrient == "x") {
+            g.attr('transform', `translate(${0},${height - xAxisPosition - margin.bottom - scrollbarBreath + legendHeight})`);
+            resultInnerHeight = height - margin.top - margin.bottom - xAxisPosition - scrollbarBreath + legendHeight;
+        } else {
+            findRightHorizontal = xAxisPosition;
+            g.attr('transform', `translate(${xAxisPosition * -1},${0})`);
+        }
+        return { innerHeight: resultInnerHeight, findRightHorizontal, xAxisPosition };
+    }
+
+    /** Reduce a set of axis label nodes to the outer category-axis edge.
+     *  Vertical (scrollOrient "x"): max bounding-box bottom, optionally subtracting
+     *  the legend height. Horizontal: min bounding-box left. `running` seeds the
+     *  accumulator so callers can fold across multiple axis groups. */
+    private accumulateAxisEdge(selection: any, running: number, subtractLegend: boolean): number {
+        const o = this.orientation;
+        let edge = running;
+        selection.each((d: any, i: number, nodes: any) => {
             if (o.scrollOrient == "x") {
-                if (this.xAxisPosition <= nodes[i].getBoundingClientRect().bottom) {
-                    this.xAxisPosition = nodes[i].getBoundingClientRect().bottom;
+                const bottom = nodes[i].getBoundingClientRect().bottom - (subtractLegend ? this.ctx.legendHeight : 0);
+                if (edge <= bottom) {
+                    edge = bottom;
                 }
             } else {
-                if (this.xAxisPosition >= nodes[i].getBoundingClientRect().left) {
-                    this.xAxisPosition = nodes[i].getBoundingClientRect().left;
+                const left = nodes[i].getBoundingClientRect().left;
+                if (edge >= left) {
+                    edge = left;
                 }
             }
         });
-        if (o.scrollOrient == "x") {
-            g.attr('transform', `translate(${0},${this.height - this.xAxisPosition - this.margin.bottom - this.ctx.scrollbarBreath + this.ctx.legendHeight})`);
-            this.innerHeight = this.height - this.margin.top - this.margin.bottom - this.xAxisPosition - this.ctx.scrollbarBreath + this.ctx.legendHeight;
-        } else {
-            this.findRightHorizontal = this.xAxisPosition;
-            g.attr('transform', `translate(${this.xAxisPosition * -1},${0})`);
-        }
+        return edge;
     }
 
-    private createAxis(myxAxisParent: any, g: any, baseAxis: boolean, myWidth: any, index: number, xScale: any, xBaseScale: any, currData: any, allDataIndex: any, levels: any, xAxisrange: any, myAxisParentHeight: any) {
+    private createAxis(myxAxisParent: any, g: any, baseAxis: boolean, myWidth: any, index: number, xScale: any, xBaseScale: any, currData: any, allDataIndex: any, levels: any, xAxisrange: any, myAxisParentHeight: any, currentEdge: number): number {
         const o = this.orientation;
         var myxAxisParentx = o.mainAxis(xScale);
-        myxAxisParent = this.styledAxisGroup(g, this.ctx.settings.xAxisFormatting, 'myXaxis')
+        myxAxisParent = this.styledAxisGroup(g, {
+            fontSize: this.ctx.renderSettings.xAxisFontSize,
+            fontFamily: this.ctx.renderSettings.xAxisFontFamily,
+            fontColor: this.ctx.renderSettings.xAxisFontColor,
+        }, 'myXaxis')
             .call(myxAxisParentx);
         myxAxisParent
             .attr('transform', o.axisGroupTransform(baseAxis, index, xBaseScale, myWidth, myAxisParentHeight));
-        this.applyGridlineStyle(myxAxisParent.selectAll('path'), this.ctx.settings.yAxisFormatting.gridLineColor);
+        this.applyGridlineStyle(myxAxisParent.selectAll('path'), this.ctx.renderSettings.yAxisGridLineColor);
         var xAxislabels = myxAxisParent.selectAll(".tick text").data(currData).text((d: any) => d.displayName);
-        if (this.ctx.visualType == "drillable" || this.ctx.visualType == "staticCategory" || this.ctx.visualType == "drillableCategory") {
+        if (this.ctx.visualType.isSelectable) {
             this.ctx.interactions.wireClick(xAxislabels);
         }
         this.ctx.tooltipServiceWrapper.addTooltip(myxAxisParent.selectAll(".tick text"),
             (dataPoint: any) => buildCategoryTooltip(dataPoint),
             () => (null as unknown as ISelectionId));
         const wrapOpts = o.name === "Vertical"
-            ? (this.ctx.settings.xAxisFormatting.labelWrapText
+            ? (this.ctx.renderSettings.xAxisLabelWrapText
                 ? { splitToken: "whitespace" as const, layout: "vertical" as const }
                 : { splitToken: "" as const, layout: "vertical" as const, maxLines: 3, ellipsis: true })
-            : (this.ctx.settings.xAxisFormatting.labelWrapText
+            : (this.ctx.renderSettings.xAxisLabelWrapText
                 ? { splitToken: "whitespace" as const, layout: "horizontal" as const }
                 : null);
         if (allDataIndex != (levels - 1)) {
             if (wrapOpts) {
                 myxAxisParent.selectAll(".tick text").call(this.wrapLabels, xBaseScale.bandwidth(), wrapOpts);
             }
-            myxAxisParent.selectAll(".tick text").data(currData).attr('transform', (d: any, i: number) => o.secondaryTickLabelTransform(xAxisrange, i, this.ctx.settings.xAxisFormatting.padding));
+            myxAxisParent.selectAll(".tick text").data(currData).attr('transform', (d: any, i: number) => o.secondaryTickLabelTransform(xAxisrange, i, this.ctx.renderSettings.xAxisPadding));
             myxAxisParent.selectAll("line").remove();
         } else {
             if (wrapOpts) {
                 myxAxisParent.selectAll(".tick text").call(this.wrapLabels, xBaseScale.bandwidth(), wrapOpts);
             }
-            xAxislabels.attr('transform', o.baseTickLabelTransform(this.ctx.settings.xAxisFormatting.padding));
+            xAxislabels.attr('transform', o.baseTickLabelTransform(this.ctx.renderSettings.xAxisPadding));
         }
-        myxAxisParent.selectAll("text").each((d: any, i: number, nodes: any) => {
-            if (o.scrollOrient == "x") {
-                if (this[o.edgeField] <= nodes[i].getBoundingClientRect().bottom) {
-                    this[o.edgeField] = nodes[i].getBoundingClientRect().bottom - this.ctx.legendHeight;
-                }
-            } else {
-                if (this[o.edgeField] >= nodes[i].getBoundingClientRect().left) {
-                    this[o.edgeField] = nodes[i].getBoundingClientRect().left;
-                }
-            }
-        });
+        let edge = this.accumulateAxisEdge(myxAxisParent.selectAll("text"), currentEdge, true);
         if (o.name === "Horizontal") {
             var maxtextWidth = 0;
             myxAxisParent.selectAll("text").each(function (this: SVGTextContentElement) {
@@ -694,27 +853,29 @@ export class ChartRenderer {
             });
             myxAxisParent.selectAll("tspan").call(this.xAxislabelAlignmentHorizontal, maxtextWidth);
         }
-        this.createAxisGridlines(myxAxisParent, currData, allDataIndex, levels, xScale, xAxisrange);
+        this.createAxisGridlines(myxAxisParent, currData, allDataIndex, levels, xScale, xAxisrange, edge);
+        return edge;
     }
 
-    private createAxisGridlines(myxAxisParent: any, currData: any, allDataIndex: any, levels: any, xScale: any, xAxisrange: any) {
+    private createAxisGridlines(myxAxisParent: any, currData: any, allDataIndex: any, levels: any, xScale: any, xAxisrange: any, edge: number) {
         const o = this.orientation;
-        if (this.ctx.settings.xAxisFormatting.showGridLine) {
-            this.applyGridlineStyle(myxAxisParent.selectAll('path'), this.ctx.settings.xAxisFormatting.gridLineColor, gridlineStrokeWidth(this.ctx.settings, "x") / o.xGridlineStrokeDivisor + "pt");
+        if (this.ctx.renderSettings.xAxisShowGridLine) {
+            const axisLinePt = Math.min(this.ctx.renderSettings.xGridlineStrokeWidth / o.xGridlineStrokeDivisor, MAX_AXIS_STROKE_PT);
+            this.applyGridlineStyle(myxAxisParent.selectAll('path'), this.ctx.renderSettings.xAxisGridLineColor, axisLinePt + "pt");
             var myAxisTop = myxAxisParent.select("path").node()!.getBoundingClientRect().top;
             const catPos = (d: any, i: number) => allDataIndex == (levels - 1)
                 ? xScale(d.category) - (xScale.padding() * xScale.step()) / 2
                 : xAxisrange[i];
-            const ext = this[o.edgeField] - myAxisTop;
+            const ext = edge - myAxisTop;
             myxAxisParent.selectAll(".text").data(currData).enter().append("line")
                 .attr("x1", (d: any, i: number) => o.gridlineAttrs(catPos(d, i), ext).x1)
                 .attr("y1", (d: any, i: number) => o.gridlineAttrs(catPos(d, i), ext).y1)
                 .attr("x2", (d: any, i: number) => o.gridlineAttrs(catPos(d, i), ext).x2)
                 .attr("y2", (d: any, i: number) => o.gridlineAttrs(catPos(d, i), ext).y2)
                 .attr("stroke-width", (d: any, i: number) => this.lineWidth(d, i))
-                .attr("stroke", this.ctx.settings.xAxisFormatting.gridLineColor);
+                .attr("stroke", this.ctx.renderSettings.xAxisGridLineColor);
         } else {
-            this.applyGridlineStyle(myxAxisParent.selectAll('path'), this.ctx.settings.xAxisFormatting.gridLineColor, "0pt");
+            this.applyGridlineStyle(myxAxisParent.selectAll('path'), this.ctx.renderSettings.xAxisGridLineColor, "0pt");
         }
     }
 
@@ -833,8 +994,8 @@ export class ChartRenderer {
             min: this.minValue,
             max: this.maxValue,
             primaryFormat: (this.ctx.barChartData && this.ctx.barChartData.length > 0) ? this.ctx.barChartData[0].numberFormat : undefined,
-            option: this.ctx.settings.yAxisFormatting.YAxisValueFormatOption,
-            decimals: this.ctx.settings.yAxisFormatting.decimalPlaces,
+            option: this.ctx.renderSettings.yAxisValueFormatOption,
+            decimals: this.ctx.renderSettings.yAxisDecimalPlaces,
         });
     }
 }

@@ -93,6 +93,7 @@ export function getMatrixLevelsAt(
     dataView: DataView & { matrix: DataViewMatrix },
     host: IVisualHost,
     fmt: ValueFormatter,
+    measureCount: number = dataView.matrix.valueSources.length,
 ): any[] {
 
     function getChildLevel(currentNode: any, parentText: string) {
@@ -119,7 +120,7 @@ export function getMatrixLevelsAt(
     function createNode(child: any) {
         var node: any = [];
         if (child.children == undefined) {
-            for (let indexMeasures = 0; indexMeasures < dataView.matrix.valueSources.length; indexMeasures++) {
+            for (let indexMeasures = 0; indexMeasures < measureCount; indexMeasures++) {
                 var nodeValue: any[] = [];
                 nodeValue = child.values[indexMeasures].value;
                 node.push(nodeValue);

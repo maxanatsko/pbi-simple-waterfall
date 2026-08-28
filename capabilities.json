@@ -20,6 +20,12 @@
                     "integer": true
                 }
             ]
+        },
+        {
+            "displayName": "Tooltips",
+            "name": "tooltips",
+            "displayNameKey": "Visual_Tooltips",
+            "kind": "Measure"
         }
     ],
     "drilldown": {
@@ -36,7 +42,10 @@
         "supportedTypes": {
             "default": true,
             "canvas": true
-        }
+        },
+        "roles": [
+            "tooltips"
+        ]
     },
     "dataViewMappings": [{
 
@@ -50,6 +59,10 @@
                 "select": [{
                     "for": {
                         "in": "measure"
+                    }
+                }, {
+                    "for": {
+                        "in": "tooltips"
                     }
                 }]
             }
@@ -293,6 +306,12 @@
         "xAxisFormatting": {
             "displayName": "X-Axis",
             "properties": {
+                "show": {
+                    "displayName": "X-Axis Show/Hide",
+                    "type": {
+                        "bool": true
+                    }
+                },
                 "fontSize": {
                     "displayName": "Font Size",
                     "description": "Font Size",

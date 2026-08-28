@@ -9,6 +9,17 @@ the authoritative version is in [`pbiviz.json`](pbiviz.json).
 
 ## [Unreleased]
 
+### Added
+
+- **X-Axis Show/Hide** toggle, mirroring the Y-Axis one. Off removes the
+  category labels and cell separators and gives the space back to the bars.
+- **Tooltips field well.** Drop extra measures onto the new **Tooltips** bucket
+  and they show as rows in the hover tooltip, alongside the bar's own value.
+  Tooltip measures are excluded from the pillar/step logic, so they never change
+  the shape of the waterfall.
+- The hover tooltip now includes a **Running total** row for each step, showing
+  the cumulative value up to and including that bar.
+
 ### Changed
 
 - TypeScript `strict` mode is now enabled. All resulting type errors in
@@ -24,6 +35,44 @@ the authoritative version is in [`pbiviz.json`](pbiviz.json).
   orchestrator. No intended change to rendering, data or interaction behaviour;
   added unit tests for the converters, formatters, tooltips, keyboard
   navigation and the scrollbar path.
+
+### Fixed
+
+- **Vertical layout geometry.** The plot rectangle is only known in stages
+  (value-axis width, then the category-label block), but the scales were built
+  once up front. As a result: the outermost pillar and its label were clipped at
+  the right edge; short bars rendered on top of the category-axis labels because
+  the value axis's zero sat at the container's bottom edge instead of on the
+  axis line; bars drifted out of their category cells; and the first bar's
+  near-zero label read as sitting below its bar. The scales are now rebuilt as
+  each dimension becomes known, with a small reserved gutter for the centred end
+  label.
+- **Total pillar drawn far too tall.** A pillar (and the first bar) was offset
+  by the running cumulative, so the total pillar shot off the top of the plot
+  and carried no data label. Pillars are now anchored to the value axis.
+- **Horizontal orientation.** The category rows overran the bottom edge and the
+  value axis stopped short of the cumulative total (clipping the last steps and
+  the total bar on the right). Same fix — rebuild the scales once the plot
+  rectangle is known.
+- **Category axis stroke width.** A large "Stroke Width" value thickened the
+  baseline and every cell separator without limit, turning the grid into a solid
+  block; both are now capped.
+- **Show Zero Line** had no visible effect — the line was drawn at 0.1pt. It is
+  now floored to a visible width.
+- **Legend completeness.** The legend now shows the total-pillar colour, and the
+  "Other" colour when breakdown steps are limited, not just favourable/adverse.
+- **Inside label contrast.** Labels placed inside a bar and using the default
+  (grey) colour are now switched to black or white based on the bar fill, with a
+  halo so a label spilling off a short bar stays readable.
+- **"Other" step order.** The aggregated "Other" step now sorts before the total
+  pillar instead of on top of it.
+- **Join Bars connectors.** In horizontal orientation the connectors were drawn
+  on the far end of each bar instead of the shared cumulative level, and the
+  connector into the total pillar landed at zero (so it looked missing). Both
+  orientations now place the connector on the meeting edge. The connector stroke
+  width is also floored so the default is visible.
+- **Font default** no longer renders as `'"Segoe UI", wf_…` in the format pane's
+  font picker.
 
 ## [3.0.0.0]
 

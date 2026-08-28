@@ -33,6 +33,7 @@ import DataViewObjectsParser = dataViewObjectsParser.DataViewObjectsParser;
 import DataView = powerbi.DataView;
 import VisualEnumerationInstanceKinds = powerbi.VisualEnumerationInstanceKinds;
 import { BarChartDataPoint } from "./dataPoint";
+import { VisualMode } from "./visualType";
 
 /* ============================================================================
  * Legacy read model
@@ -70,7 +71,7 @@ export class Legend {
   public show: boolean = false;
   public fontSize: number = 9;
   public fontColor: string = DEFAULT_GREY;
-  public fontFamily: string = "\"Segoe UI\", wf_segoe-ui_normal, helvetica, arial, sans-serif";
+  public fontFamily: string = "Segoe UI";
   public textFavourable: string = "Favourable";
   public textAdverse: string = "Adverse";
 }
@@ -89,9 +90,10 @@ export class margins {
 }
 
 export class xAxisFormatting {
+  public show: boolean = true;
   public fontSize: number = 9;
   public fontColor: string = DEFAULT_GREY;
-  public fontFamily: string = "\"Segoe UI\", wf_segoe-ui_normal, helvetica, arial, sans-serif";
+  public fontFamily: string = "Segoe UI";
   public labelWrapText: boolean = true;
   public fitToWidth: boolean = true;
   public barWidth: number = 50;
@@ -108,7 +110,7 @@ export class yAxisFormatting {
   public showYAxisValues: boolean = true;
   public fontSize: number = 9;
   public fontColor: string = DEFAULT_GREY;
-  public fontFamily: string = "\"Segoe UI\", wf_segoe-ui_normal, helvetica, arial, sans-serif";
+  public fontFamily: string = "Segoe UI";
   public YAxisValueFormatOption: string = "Auto";
   public showGridLine: boolean = true;
 
@@ -132,7 +134,7 @@ export class LabelsFormatting {
   public sentimentFontColorFavourable: string = DEFAULT_GREY;
   public sentimentFontColorAdverse: string = DEFAULT_GREY;
   public sentimentFontColorOther: string = DEFAULT_GREY;
-  public fontFamily: string = "\"Segoe UI\", wf_segoe-ui_normal, helvetica, arial, sans-serif";
+  public fontFamily: string = "Segoe UI";
   public valueFormat: string = "Auto";
   public useDefaultLabelPositioning: boolean = true;
   public labelPosition: string = "Outside end";
@@ -154,7 +156,9 @@ export class LabelsFormatting {
  * Visual.getFormattingModel() once barChartData / visualType are known.
  * ==========================================================================*/
 
-const FONT_FAMILY_DEFAULT = "\"Segoe UI\", wf_segoe-ui_normal, helvetica, arial, sans-serif";
+// Bare family name so the formatting-pane FontPicker shows a clean "Segoe UI"
+// chip rather than the raw, quote-prefixed CSS stack ('"Segoe UI", wf_...').
+const FONT_FAMILY_DEFAULT = "Segoe UI";
 
 export const DEFAULT_GREY = "#777777";
 
@@ -286,6 +290,7 @@ class XAxisCard extends formattingSettings.SimpleCard {
   name = "xAxisFormatting";
   displayName = "X-Axis";
 
+  show = toggle("show", "X-Axis Show/Hide", true);
   font = fontControl("xAxisFormatting", 9);
   fontColor = color("fontColor", "Font Color", DEFAULT_GREY);
   fitToWidth = toggle("fitToWidth", "Fit to width", true);
@@ -296,7 +301,7 @@ class XAxisCard extends formattingSettings.SimpleCard {
   gridLineStrokeWidth = num("gridLineStrokeWidth", "Stroke Width", 5, 1, 50);
   gridLineColor = color("gridLineColor", "Gridlines Color", DEFAULT_GREY);
 
-  slices = [this.font, this.fontColor, this.fitToWidth, this.labelWrapText, this.barWidth,
+  slices = [this.show, this.font, this.fontColor, this.fitToWidth, this.labelWrapText, this.barWidth,
     this.padding, this.showGridLine, this.gridLineStrokeWidth, this.gridLineColor];
 }
 
@@ -396,16 +401,16 @@ export class VisualFormattingSettingsModel extends formattingSettings.Model {
    * after visualType / barChartData are known.
    */
   public applyState(
-    visualType: string,
+    visualType: VisualMode,
     settings: VisualSettings,
     barChartData: BarChartDataPoint[],
     dataView: DataView,
     defaultXAxisGridlineStrokeWidth: number,
     defaultYAxisGridlineStrokeWidth: number
   ): void {
-    const isStatic = visualType === "static";
-    const isStaticCategory = visualType === "staticCategory";
-    const isStaticLike = isStatic || isStaticCategory;
+    const isStatic = visualType.isStatic;
+    const isStaticCategory = visualType.isStaticCategory;
+    const isStaticLike = visualType.isStaticLike;
     const singleLevel = dataView?.matrix?.rows?.levels?.length === 1;
     const useSentiment = settings.chartOrientation.useSentimentFeatures;
     const data = (barChartData ?? []).filter(d => d && d.category !== "defaultBreakdownStepOther");
@@ -419,7 +424,7 @@ export class VisualFormattingSettingsModel extends formattingSettings.Model {
 
     // ---- definePillars --------------------------------------------------
     const dp = this.definePillars;
-    dp.visible = isStaticLike || visualType === "drillableCategory";
+    dp.visible = isStaticLike || visualType.isDrillableCategory;
     dp.slices = [];
     if (isStatic) {
       for (const d of data) {
@@ -432,7 +437,7 @@ export class VisualFormattingSettingsModel extends formattingSettings.Model {
         }
       }
       dp.slices.push(dp.Totalpillar);
-    } else if (visualType === "drillableCategory") {
+    } else if (visualType.isDrillableCategory) {
       dp.slices.push(dp.Totalpillar);
     }
 
@@ -456,9 +461,16 @@ export class VisualFormattingSettingsModel extends formattingSettings.Model {
 
     // ---- xAxisFormatting ---------------------------------------------
     const xa = this.xAxisFormatting;
+    const xShow = settings.xAxisFormatting.show;
+    // Hiding the x-axis drops its labels and cell separators, so hide their options too.
+    xa.font.visible = xShow;
+    xa.fontColor.visible = xShow;
+    xa.labelWrapText.visible = xShow;
+    xa.padding.visible = xShow;
+    xa.showGridLine.visible = xShow;
     xa.barWidth.visible = !settings.xAxisFormatting.fitToWidth;
-    xa.gridLineStrokeWidth.visible = settings.xAxisFormatting.showGridLine;
-    xa.gridLineColor.visible = settings.xAxisFormatting.showGridLine;
+    xa.gridLineStrokeWidth.visible = xShow && settings.xAxisFormatting.showGridLine;
+    xa.gridLineColor.visible = xShow && settings.xAxisFormatting.showGridLine;
     xa.gridLineStrokeWidth.value = defaultXAxisGridlineStrokeWidth as number;
 
     // ---- yAxisFormatting ---------------------------------------------

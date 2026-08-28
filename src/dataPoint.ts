@@ -14,7 +14,8 @@ export interface BarChartDataPoint {
     selectionId: ISelectionId | null;
     childrenCount: number;
     sortOrderIndex: number;
-    sortOrderIndexforLimitBreakdown: number;
+    sortGroupIndex: number;
+    sortWithinGroupIndex: number;
     customBarColor: string;
     customFontColor: string;
     customLabelPositioning: string;
@@ -28,6 +29,18 @@ export interface BarChartDataPoint {
     orderIndex?: number;
     xAxisFormat?: string;
     type?: any;
+    /** Running cumulative total up to and including this bar, pre-formatted.
+     *  Set for step bars; left undefined for pillars (the pillar value is the
+     *  total already). Rendered as an extra tooltip row. */
+    cumulativeFormatted?: string;
+    /** Values from the "Tooltips" field well for this bar's category, in field
+     *  order, each `{ displayName, value }` pre-formatted. Appended to the
+     *  hover tooltip. */
+    tooltipMeasures?: { displayName: string; value: string }[];
+    /** Raw numeric tooltip values, index-aligned with `tooltipMeasures`
+     *  (`null` for a text source). Used to sum tooltip fields onto the
+     *  aggregated "Other" bar. */
+    tooltipMeasuresRaw?: (number | null)[];
 }
 
 /** Build a BarChartDataPoint with safe defaults; converters override per-point fields. */
@@ -41,7 +54,8 @@ export function createBarChartDataPoint(): BarChartDataPoint {
         selectionId: null,
         childrenCount: 0,
         sortOrderIndex: 0,
-        sortOrderIndexforLimitBreakdown: 0,
+        sortGroupIndex: 0,
+        sortWithinGroupIndex: 0,
         customBarColor: "",
         customFontColor: "",
         customLabelPositioning: "",

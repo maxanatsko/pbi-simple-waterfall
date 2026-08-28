@@ -306,6 +306,12 @@
         "xAxisFormatting": {
             "displayName": "X-Axis",
             "properties": {
+                "show": {
+                    "displayName": "X-Axis Show/Hide",
+                    "type": {
+                        "bool": true
+                    }
+                },
                 "fontSize": {
                     "displayName": "Font Size",
                     "description": "Font Size",

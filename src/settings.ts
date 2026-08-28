@@ -71,7 +71,7 @@ export class Legend {
   public show: boolean = false;
   public fontSize: number = 9;
   public fontColor: string = DEFAULT_GREY;
-  public fontFamily: string = "\"Segoe UI\", wf_segoe-ui_normal, helvetica, arial, sans-serif";
+  public fontFamily: string = "Segoe UI";
   public textFavourable: string = "Favourable";
   public textAdverse: string = "Adverse";
 }
@@ -92,7 +92,7 @@ export class margins {
 export class xAxisFormatting {
   public fontSize: number = 9;
   public fontColor: string = DEFAULT_GREY;
-  public fontFamily: string = "\"Segoe UI\", wf_segoe-ui_normal, helvetica, arial, sans-serif";
+  public fontFamily: string = "Segoe UI";
   public labelWrapText: boolean = true;
   public fitToWidth: boolean = true;
   public barWidth: number = 50;
@@ -109,7 +109,7 @@ export class yAxisFormatting {
   public showYAxisValues: boolean = true;
   public fontSize: number = 9;
   public fontColor: string = DEFAULT_GREY;
-  public fontFamily: string = "\"Segoe UI\", wf_segoe-ui_normal, helvetica, arial, sans-serif";
+  public fontFamily: string = "Segoe UI";
   public YAxisValueFormatOption: string = "Auto";
   public showGridLine: boolean = true;
 
@@ -133,7 +133,7 @@ export class LabelsFormatting {
   public sentimentFontColorFavourable: string = DEFAULT_GREY;
   public sentimentFontColorAdverse: string = DEFAULT_GREY;
   public sentimentFontColorOther: string = DEFAULT_GREY;
-  public fontFamily: string = "\"Segoe UI\", wf_segoe-ui_normal, helvetica, arial, sans-serif";
+  public fontFamily: string = "Segoe UI";
   public valueFormat: string = "Auto";
   public useDefaultLabelPositioning: boolean = true;
   public labelPosition: string = "Outside end";
@@ -155,7 +155,9 @@ export class LabelsFormatting {
  * Visual.getFormattingModel() once barChartData / visualType are known.
  * ==========================================================================*/
 
-const FONT_FAMILY_DEFAULT = "\"Segoe UI\", wf_segoe-ui_normal, helvetica, arial, sans-serif";
+// Bare family name so the formatting-pane FontPicker shows a clean "Segoe UI"
+// chip rather than the raw, quote-prefixed CSS stack ('"Segoe UI", wf_...').
+const FONT_FAMILY_DEFAULT = "Segoe UI";
 
 export const DEFAULT_GREY = "#777777";
 

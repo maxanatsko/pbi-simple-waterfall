@@ -110,6 +110,13 @@ export class Orientation {
             if ((d.isPillar == 1 || i == 0) && d.value < 0) {
                 return this.maxValue >= 0 ? this.cross(0) : this.cross(this.maxValue);
             }
+            if (d.isPillar == 1 || i == 0) {
+                // A pillar (and the very first bar) is anchored to the zero
+                // baseline, not to the running cumulative: its top edge sits
+                // `barCrossSize` px above zero. Subtracting `breakdown` here drew
+                // the total pillar ~10x too tall, off the top of the plot.
+                return this.cross(0) - this.barCrossSize(d, i, data);
+            }
             return this.cross(d.value) - this.breakdown(i, data);
         }
         // horizontal: single forward cross scale, baseline at cross(0)

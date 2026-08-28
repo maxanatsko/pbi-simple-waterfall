@@ -11,6 +11,7 @@ import { Orientation, OrientationName } from "./orientation";
 import { ValueFormatter } from "./valueFormatting";
 import { getMatrixLevelsAt } from "./matrix";
 import {
+    BAND_PADDING,
     MARGIN_BUMP,
     Y_AXIS_TICK_COUNT,
     SCROLLBAR_TRACK_FILL,
@@ -76,6 +77,21 @@ export class ChartRenderer {
         this.renderCore(this.ctx.allData);
     }
 
+    /** Re-create `this.orientation` from the current `innerWidth` / `innerHeight`.
+     *  The plot rectangle is only known in stages (value-axis width, then the
+     *  category-label block), so the orientation -- which owns the band + value
+     *  scales every draw call reads -- has to be rebuilt as those become known. */
+    private rebuildOrientation(): void {
+        this.orientation = new Orientation(this.orientationName, {
+            minValue: this.minValue,
+            maxValue: this.maxValue,
+            innerWidth: this.innerWidth,
+            innerHeight: this.innerHeight,
+            xAxisPosition: this.xAxisPosition,
+            scrollbarBreath: this.ctx.scrollbarBreath,
+        });
+    }
+
     private renderCore(allData: any): void {
         const o = this.orientationName;
 
@@ -131,7 +147,16 @@ export class ChartRenderer {
             this.ctx.renderSettings);
         this[this.orientation.crossAxisExtentField] = crossAxisExtent;
         if (this.orientation.name === "Vertical") {
-            this.innerWidth = this.innerWidth - crossAxisExtent;
+            // Match the category band scale to the actual drawable SVG width
+            // (see the `this.width` assignment below: full width minus the left
+            // margin, the value-axis label column and a 5px seam), then reserve
+            // half a band step on top. The outermost category label is centred
+            // on its band and is wider than the band itself, so without this
+            // gutter its outer half (and the last pillar) is clipped at the edge.
+            const cats = this.ctx.barChartData.length || 1;
+            const endLabelGutter = Math.min((this.innerWidth / (cats + BAND_PADDING)) / 2, 40);
+            this.innerWidth = this.innerWidth - crossAxisExtent - this.margin.left - 5 - endLabelGutter;
+            this.rebuildOrientation();
         }
 
         let findRightHorizontal = 0;
@@ -142,6 +167,12 @@ export class ChartRenderer {
             this.svg.attr("transform", `translate(${this.margin.left + this.yAxisWidth},${0})`);
             this.checkBarWidth();
             findRightHorizontal = this.applyCategoryAxisLayout(this.gScrollable, allData);
+            // applyCategoryAxisLayout has now measured the category-label block and
+            // shrunk this.innerHeight to reserve room for it. Rebuild once more so
+            // the value scale's zero lands on the category-axis line: without this
+            // the bars' baseline sits at the container's bottom edge and short
+            // bars render on top of the category labels.
+            this.rebuildOrientation();
             this.createCrossAxis(this.svgYAxis, this.margin.left + this.yAxisWidth, findRightHorizontal);
             this.createCrossAxis(this.gScrollable, 0, findRightHorizontal);
         } else {

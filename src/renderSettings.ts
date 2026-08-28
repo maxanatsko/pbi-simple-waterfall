@@ -41,6 +41,7 @@ export class RenderSettings {
     get labelsSentimentFontColorOther(): string { return this.settings.LabelsFormatting.sentimentFontColorOther; }
 
     // ---- x-axis ----------------------------------------------------------
+    get xAxisShow(): boolean { return this.settings.xAxisFormatting.show; }
     get xAxisFitToWidth(): boolean { return this.settings.xAxisFormatting.fitToWidth; }
     get xAxisLabelWrapText(): boolean { return this.settings.xAxisFormatting.labelWrapText; }
     get xAxisBarWidth(): number { return this.settings.xAxisFormatting.barWidth; }

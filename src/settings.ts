@@ -90,6 +90,7 @@ export class margins {
 }
 
 export class xAxisFormatting {
+  public show: boolean = true;
   public fontSize: number = 9;
   public fontColor: string = DEFAULT_GREY;
   public fontFamily: string = "Segoe UI";
@@ -289,6 +290,7 @@ class XAxisCard extends formattingSettings.SimpleCard {
   name = "xAxisFormatting";
   displayName = "X-Axis";
 
+  show = toggle("show", "X-Axis Show/Hide", true);
   font = fontControl("xAxisFormatting", 9);
   fontColor = color("fontColor", "Font Color", DEFAULT_GREY);
   fitToWidth = toggle("fitToWidth", "Fit to width", true);
@@ -299,7 +301,7 @@ class XAxisCard extends formattingSettings.SimpleCard {
   gridLineStrokeWidth = num("gridLineStrokeWidth", "Stroke Width", 5, 1, 50);
   gridLineColor = color("gridLineColor", "Gridlines Color", DEFAULT_GREY);
 
-  slices = [this.font, this.fontColor, this.fitToWidth, this.labelWrapText, this.barWidth,
+  slices = [this.show, this.font, this.fontColor, this.fitToWidth, this.labelWrapText, this.barWidth,
     this.padding, this.showGridLine, this.gridLineStrokeWidth, this.gridLineColor];
 }
 
@@ -459,9 +461,16 @@ export class VisualFormattingSettingsModel extends formattingSettings.Model {
 
     // ---- xAxisFormatting ---------------------------------------------
     const xa = this.xAxisFormatting;
+    const xShow = settings.xAxisFormatting.show;
+    // Hiding the x-axis drops its labels and cell separators, so hide their options too.
+    xa.font.visible = xShow;
+    xa.fontColor.visible = xShow;
+    xa.labelWrapText.visible = xShow;
+    xa.padding.visible = xShow;
+    xa.showGridLine.visible = xShow;
     xa.barWidth.visible = !settings.xAxisFormatting.fitToWidth;
-    xa.gridLineStrokeWidth.visible = settings.xAxisFormatting.showGridLine;
-    xa.gridLineColor.visible = settings.xAxisFormatting.showGridLine;
+    xa.gridLineStrokeWidth.visible = xShow && settings.xAxisFormatting.showGridLine;
+    xa.gridLineColor.visible = xShow && settings.xAxisFormatting.showGridLine;
     xa.gridLineStrokeWidth.value = defaultXAxisGridlineStrokeWidth as number;
 
     // ---- yAxisFormatting ---------------------------------------------

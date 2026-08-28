@@ -265,6 +265,16 @@ export class ChartRenderer {
     }
 
     private applyCategoryAxisLayout(gParent: any, allDatatemp: any): number {
+        if (!this.ctx.renderSettings.xAxisShow) {
+            // X-axis hidden: draw no category labels / separators and reclaim the
+            // strip they would have occupied.
+            this.xAxisPosition = 0;
+            if (this.orientation.scrollOrient === "x") {
+                this.innerHeight = this.height - this.margin.top - this.margin.bottom
+                    - this.ctx.scrollbarBreath + this.ctx.legendHeight;
+            }
+            return 0;
+        }
         const result = this.createCategoryAxis(
             gParent,
             allDatatemp,

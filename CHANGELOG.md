@@ -11,6 +11,8 @@ the authoritative version is in [`pbiviz.json`](pbiviz.json).
 
 ### Added
 
+- **X-Axis Show/Hide** toggle, mirroring the Y-Axis one. Off removes the
+  category labels and cell separators and gives the space back to the bars.
 - **Tooltips field well.** Drop extra measures onto the new **Tooltips** bucket
   and they show as rows in the hover tooltip, alongside the bar's own value.
   Tooltip measures are excluded from the pillar/step logic, so they never change

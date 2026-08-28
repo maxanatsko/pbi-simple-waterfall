@@ -15,6 +15,13 @@ import { SORT_EPSILON, SORT_EPSILON_MAX } from "./constants";
 const compareBySortKey = (a: BarChartDataPoint, b: BarChartDataPoint) =>
     (a.sortGroupIndex - b.sortGroupIndex) || (a.sortWithinGroupIndex - b.sortWithinGroupIndex);
 
+/** Whether a value source is numeric (vs text) per its declared type -- used to
+ *  decide if a Tooltips-role value should be number-formatted or shown as text. */
+function isNumericSource(source: any): boolean {
+    const t = source && source.type;
+    return !!(t && (t.numeric || t.integer));
+}
+
 /** Black or white, whichever is legible on top of `bg` (a #rgb / #rrggbb
  *  colour). Returns `fallback` when `bg` isn't a hex colour. */
 function readableTextColor(bg: string, fallback: string): string {
@@ -140,42 +147,53 @@ export class WaterfallDataBuilder {
 
     /** Pull the "Tooltips"-role measure values for one matrix node (its `values`
      *  map), formatted, in field order. Empty when nothing is in the Tooltips well. */
-    private tooltipMeasuresFor(nodeValues: any): { displayName: string; value: string }[] {
+    private tooltipMeasuresFor(nodeValues: any): { formatted: { displayName: string; value: string }[]; raw: (number | null)[] } {
         const sources = requireMatrixDataView(this.ctx.options).matrix.valueSources;
-        const out: { displayName: string; value: string }[] = [];
+        const formatted: { displayName: string; value: string }[] = [];
+        const raw: (number | null)[] = [];
         for (let i = this.ctx.measureCount; i < sources.length; i++) {
             const cell = nodeValues ? nodeValues[i] : null;
-            out.push({
+            const numeric = isNumericSource(sources[i]);
+            formatted.push({
                 displayName: sources[i].displayName,
-                value: this.formatTooltipCell(cell ? cell.value : null, resolveFormat(cell, sources[i].format)),
+                value: this.formatTooltipCell(cell ? cell.value : null, resolveFormat(cell, sources[i].format), numeric),
             });
+            raw.push(numeric && cell != null && cell.value != null ? Number(cell.value) : null);
         }
-        return out;
+        return { formatted, raw };
     }
 
-    /** Format one tooltip cell: numeric values (incl. numeric strings) go through
-     *  the value formatter with the cell's resolved (possibly dynamic) format;
-     *  a text-valued measure is passed through verbatim. */
-    private formatTooltipCell(raw: any, format: string): string {
+    /** Format one tooltip cell: a numeric source goes through the value formatter
+     *  with the cell's resolved (possibly dynamic) format; a text source is
+     *  passed through verbatim (keeps leading zeros / intentional text). */
+    private formatTooltipCell(raw: any, format: string, numeric: boolean): string {
         if (raw == null) return this.ctx.formatter.value(null, format);
-        if (typeof raw === "number") return this.ctx.formatter.value(raw, format);
-        const asNumber = Number(raw);
-        return Number.isNaN(asNumber) ? String(raw) : this.ctx.formatter.value(asNumber, format);
+        if (numeric) return this.ctx.formatter.value(Number(raw), format);
+        return String(raw);
     }
 
     /** Same, for the drillable path: pull tooltip values out of the trailing
      *  per-source leaf arrays from `findLowestLevels`, aligned by leaf index. */
-    private tooltipMeasuresFromLeaves(allMeasureValues: any[], nodeItems: number): { displayName: string; value: string }[] {
+    private tooltipMeasuresFromLeaves(allMeasureValues: any[], nodeItems: number): { formatted: { displayName: string; value: string }[]; raw: (number | null)[] } {
         const sources = requireMatrixDataView(this.ctx.options).matrix.valueSources;
-        const out: { displayName: string; value: string }[] = [];
+        const formatted: { displayName: string; value: string }[] = [];
+        const raw: (number | null)[] = [];
         for (let i = this.ctx.measureCount; i < allMeasureValues.length; i++) {
             const leaf = allMeasureValues[i] && allMeasureValues[i][nodeItems];
-            out.push({
+            const numeric = isNumericSource(sources[i]);
+            formatted.push({
                 displayName: sources[i].displayName,
-                value: this.formatTooltipCell(leaf ? leaf.value : null, (leaf && leaf.numberFormat) || sources[i].format || ""),
+                value: this.formatTooltipCell(leaf ? leaf.value : null, (leaf && leaf.numberFormat) || sources[i].format || "", numeric),
             });
+            raw.push(numeric && leaf && leaf.value != null ? Number(leaf.value) : null);
         }
-        return out;
+        return { formatted, raw };
+    }
+
+    /** Assign a tooltip-measure helper result ({formatted, raw}) onto a point. */
+    private setTooltipMeasures(d: BarChartDataPoint, tm: { formatted: { displayName: string; value: string }[]; raw: (number | null)[] }): void {
+        d.tooltipMeasures = tm.formatted;
+        d.tooltipMeasuresRaw = tm.raw;
     }
 
     /** Walk the final, sorted bar list and stamp each step with the running
@@ -263,7 +281,7 @@ export class WaterfallDataBuilder {
                     }
                     data2.toolTipValue1Formatted = this.ctx.formatter.label(data2);
                     data2.toolTipDisplayValue1 = data2.category;
-                    data2.tooltipMeasures = this.tooltipMeasuresFor(x.values);
+                    this.setTooltipMeasures(data2, this.tooltipMeasuresFor(x.values));
                     data2.childrenCount = 1;
                     if (data2.isPillar == 1) {
                         sortOrderIndex = sortOrderIndex + 1
@@ -343,7 +361,7 @@ export class WaterfallDataBuilder {
                         data2Category = this.getDataForCategory(valueDifference, (allMeasureValues[indexMeasures][nodeItems]["numberFormat"] || dataView.matrix.valueSources[indexMeasures].format), displayName, category, 0, selectionId, indexMeasures * maxNodes + (nodeItems + 1), 1, toolTipDisplayValue1, toolTipDisplayValue2, Measure1Value, Measure2Value);
                         data2Category.sortGroupIndex = indexMeasures * 2 + 1;
                         data2Category.sortWithinGroupIndex = nodeItems + 1;
-                        data2Category.tooltipMeasures = this.tooltipMeasuresFromLeaves(allLeaves, nodeItems);
+                        this.setTooltipMeasures(data2Category, this.tooltipMeasuresFromLeaves(allLeaves, nodeItems));
                         visualData.push(data2Category);
                     }
                     
@@ -356,7 +374,7 @@ export class WaterfallDataBuilder {
             dataPillar = this.getDataForCategory(totalValueofMeasure, ((allMeasureValues[indexMeasures][0] && allMeasureValues[indexMeasures][0]["numberFormat"]) || dataView.matrix.valueSources[indexMeasures].format), dataView.matrix.valueSources[indexMeasures].displayName, dataView.matrix.valueSources[indexMeasures].displayName, 1, null, indexMeasures * 2, 1, toolTipDisplayValue1, toolTipDisplayValue2, Measure1Value, Measure2Value);
             dataPillar.sortGroupIndex = indexMeasures * 2;
             dataPillar.sortWithinGroupIndex = 0;
-            dataPillar.tooltipMeasures = this.tooltipMeasuresFor(dataView.matrix.rows.root.values);
+            this.setTooltipMeasures(dataPillar, this.tooltipMeasuresFor(dataView.matrix.rows.root.values));
             visualData.push(dataPillar);
         }
         if (this.ctx.renderSettings.limitBreakdown) {
@@ -464,7 +482,7 @@ export class WaterfallDataBuilder {
                 }
                 data2.toolTipValue1Formatted = this.ctx.formatter.label(data2);
                 data2.toolTipDisplayValue1 = data2.category;
-                data2.tooltipMeasures = this.tooltipMeasuresFor(x.values);
+                this.setTooltipMeasures(data2, this.tooltipMeasuresFor(x.values));
                 data2.childrenCount = 1;
                 if (data2.isPillar == 1) {
                     sortOrderIndex = Math.round(sortOrderIndex) + 1
@@ -506,6 +524,14 @@ export class WaterfallDataBuilder {
         var newOther: any[] = [];
         var otherTotalValue = 0;
         var othersortOrderIndex = 0;
+        // Running per-tooltip-source sums for the categories folded into "Other".
+        let otherTooltipSum: number[] = [];
+        const addToTooltipSum = (raw: (number | null)[] | undefined) => {
+            if (!raw) return;
+            for (let k = 0; k < raw.length; k++) {
+                if (raw[k] != null) otherTooltipSum[k] = (otherTooltipSum[k] || 0) + (raw[k] as number);
+            }
+        };
         for (let index = 0; index < currData.length; index++) {
             /*currData[index]["showbreakdownstep"] = false;
             otherTotalValue = otherTotalValue + currData[index].value
@@ -514,10 +540,11 @@ export class WaterfallDataBuilder {
                 currData[index]["showbreakdownstep"] = true;
                 limitcounter = 0;
                 if (otherTotalValue != 0) {
-                    newOther.push(this.addOtherBreakdownStep(options, otherTotalValue, othersortOrderIndex));
+                    newOther.push(this.addOtherBreakdownStep(options, otherTotalValue, othersortOrderIndex, otherTooltipSum));
                 }
                 otherTotalValue = 0
                 othersortOrderIndex = 0;
+                otherTooltipSum = [];
 
             } else if (limitcounter < limit) {
                 limitcounter++;
@@ -533,6 +560,7 @@ export class WaterfallDataBuilder {
                 currData[index]["showbreakdownstep"] = false;
                 otherTotalValue = otherTotalValue + currData[index].value;
                 othersortOrderIndex = currData[index].sortGroupIndex;
+                addToTooltipSum(currData[index].tooltipMeasuresRaw);
             }
         }
 
@@ -555,7 +583,7 @@ export class WaterfallDataBuilder {
 
         return currData;
     }
-    private addOtherBreakdownStep(options: VisualUpdateOptions, value: any, sortOrderIndex: any) {
+    private addOtherBreakdownStep(options: VisualUpdateOptions, value: any, sortOrderIndex: any, tooltipSum?: number[]) {
         //*******************Add "Other" breakdown item *********************
         const dataView = requireMatrixDataView(options);
         //*******************************************************************
@@ -587,6 +615,23 @@ export class WaterfallDataBuilder {
         data2.toolTipValue1Formatted = this.ctx.formatter.label(data2);
         // "Other", not the internal "defaultBreakdownStepOther<n>" category id.
         data2.toolTipDisplayValue1 = data2.displayName;
+        // Tooltip fields on "Other" = the sum across the folded-in categories.
+        if (tooltipSum && tooltipSum.length) {
+            const sources = dataView.matrix.valueSources;
+            const formatted: { displayName: string; value: string }[] = [];
+            const raw: (number | null)[] = [];
+            for (let k = 0; k < tooltipSum.length; k++) {
+                const src = sources[this.ctx.measureCount + k];
+                const sum = tooltipSum[k];
+                formatted.push({
+                    displayName: src ? src.displayName : "",
+                    value: this.formatTooltipCell(sum == null ? null : sum, (src && src.format) || "", true),
+                });
+                raw.push(sum == null ? null : sum);
+            }
+            data2.tooltipMeasures = formatted;
+            data2.tooltipMeasuresRaw = raw;
+        }
         data2.childrenCount = 1;
         data2.sortOrderIndex = sortOrderIndex + SORT_EPSILON_MAX;
         data2.sortGroupIndex = sortOrderIndex;
@@ -636,7 +681,7 @@ export class WaterfallDataBuilder {
                 data2Category = this.getDataForCategory(valueDifference, (allMeasureValues[indexMeasures][nodeItems]["numberFormat"] || dataView.matrix.valueSources[indexMeasures].format), displayName, category, 0, selectionId, 1, 1, toolTipDisplayValue1, null, Measure1Value, null);
                 data2Category.sortGroupIndex = 0;
                 data2Category.sortWithinGroupIndex = nodeItems + 1;
-                data2Category.tooltipMeasures = this.tooltipMeasuresFromLeaves(allMeasureValues, nodeItems);
+                this.setTooltipMeasures(data2Category, this.tooltipMeasuresFromLeaves(allMeasureValues, nodeItems));
                 visualData.push(data2Category);
             }
 
@@ -722,7 +767,7 @@ export class WaterfallDataBuilder {
         data2.toolTipValue1Formatted = this.ctx.formatter.label(data2);
         data2.toolTipDisplayValue1 = data2.category;
         // Grand totals of any "Tooltips" measures live on the matrix root node.
-        data2.tooltipMeasures = this.tooltipMeasuresFor(dataView.matrix.rows.root.values);
+        this.setTooltipMeasures(data2, this.tooltipMeasuresFor(dataView.matrix.rows.root.values));
         data2.childrenCount = 1;
         data2.sortOrderIndex = 1;
         data2.sortGroupIndex = 0;

@@ -1,28 +1,35 @@
 import * as d3 from "d3";
 import { RenderSettings } from "./renderSettings";
+import { BarChartDataPoint } from "./dataPoint";
 import { LEGEND_CIRCLE_RADIUS_FACTOR } from "./constants";
 
 type Selection = d3.Selection<any, any, any, any>;
 
 /** Draw the sentiment legend into `legendContainer`. Returns the legend height
  *  (0 when the legend is off), which the caller subtracts from the viewport
- *  height. Covers every pillar colour actually drawn -- favourable, adverse, the
- *  total pillar, and the "Other" bucket when `hasOtherBar` -- not just
- *  favourable / adverse. */
-export function renderLegend(legendContainer: Selection, renderSettings: RenderSettings, hasOtherBar: boolean): number {
+ *  height. Every entry is derived from `bars` -- only colours that appear on an
+ *  actual bar get a swatch. */
+export function renderLegend(legendContainer: Selection, renderSettings: RenderSettings, bars: BarChartDataPoint[]): number {
     legendContainer.selectAll('svg').remove();
     if (!(renderSettings.useSentimentFeatures && renderSettings.legendShow)) {
         legendContainer.style('height', 0 + "pt");
         return 0;
     }
 
-    const entries: { color: string; text: string }[] = [
-        { color: renderSettings.sentimentColorFavourable, text: renderSettings.legendTextFavourable },
-        { color: renderSettings.sentimentColorAdverse, text: renderSettings.legendTextAdverse },
-        { color: renderSettings.sentimentColorTotal, text: "Total" },
-    ];
-    if (hasOtherBar) {
-        entries.push({ color: renderSettings.sentimentColorOther, text: "Other" });
+    const hasFavourable = bars.some(d => d.isPillar != 1 && d.displayName !== "Other" && d.value >= 0);
+    const hasAdverse = bars.some(d => d.isPillar != 1 && d.value < 0);
+    const hasTotal = bars.some(d => d.isPillar == 1);
+    const hasOther = bars.some(d => d.displayName === "Other");
+
+    const entries: { color: string; text: string }[] = [];
+    if (hasFavourable) entries.push({ color: renderSettings.sentimentColorFavourable, text: renderSettings.legendTextFavourable });
+    if (hasAdverse) entries.push({ color: renderSettings.sentimentColorAdverse, text: renderSettings.legendTextAdverse });
+    if (hasTotal) entries.push({ color: renderSettings.sentimentColorTotal, text: "Total" });
+    if (hasOther) entries.push({ color: renderSettings.sentimentColorOther, text: "Other" });
+
+    if (entries.length === 0) {
+        legendContainer.style('height', 0 + "pt");
+        return 0;
     }
 
     let legendHeight = 0;

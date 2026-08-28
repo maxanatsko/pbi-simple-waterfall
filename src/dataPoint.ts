@@ -37,6 +37,10 @@ export interface BarChartDataPoint {
      *  order, each `{ displayName, value }` pre-formatted. Appended to the
      *  hover tooltip. */
     tooltipMeasures?: { displayName: string; value: string }[];
+    /** Raw numeric tooltip values, index-aligned with `tooltipMeasures`
+     *  (`null` for a text source). Used to sum tooltip fields onto the
+     *  aggregated "Other" bar. */
+    tooltipMeasuresRaw?: (number | null)[];
 }
 
 /** Build a BarChartDataPoint with safe defaults; converters override per-point fields. */

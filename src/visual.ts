@@ -171,11 +171,10 @@ export class Visual implements IVisual {
         this.visualType = mode;
         this.barChartData = allData[allData.length - 1];
 
-        // Render the legend once the bars are known: the "Other" swatch is shown
-        // only if an "Other" bucket bar was actually produced, not merely because
-        // "Limit Steps" is on.
-        const hasOtherBar = this.barChartData.some(d => d.displayName === "Other");
-        this.legendHeight = renderLegend(this.legendContainer, renderSettings, hasOtherBar);
+        // Render the legend once the bars are known: every swatch is derived
+        // from the bars that were actually produced (a Total swatch only when a
+        // pillar exists, "Other" only when the bucket bar exists, etc.).
+        this.legendHeight = renderLegend(this.legendContainer, renderSettings, this.barChartData);
 
         this.interactions.configure({ allowInteractions: true, isHighContrast: this.isHighContrast });
         new ChartRenderer({

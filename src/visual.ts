@@ -139,7 +139,6 @@ export class Visual implements IVisual {
         });
         this.chartContainer.selectAll('svg').remove();
         const renderSettings = new RenderSettings(this.visualSettings);
-        this.legendHeight = renderLegend(this.legendContainer, renderSettings);
         if (dataView.matrix.rows.levels.length != 1){
             this.visualSettings.chartOrientation.limitBreakdown=false;
         }
@@ -151,6 +150,11 @@ export class Visual implements IVisual {
         // solely to Tooltips (Values empty) does not become a bogus bar.
         const valueSources = dataView.matrix.valueSources;
         const measureCount = valueSources.filter(s => !(s.roles && s.roles["tooltips"])).length;
+        if (measureCount === 0) {
+            // Nothing to plot -- fail cleanly rather than let the converters and
+            // the value scale derive NaN from an empty bar list.
+            throw new Error("Multi-Step Waterfall: add a measure to the Values field.");
+        }
 
         const builder = new WaterfallDataBuilder({
             options,
@@ -166,6 +170,12 @@ export class Visual implements IVisual {
         const allData = mode.build(builder);
         this.visualType = mode;
         this.barChartData = allData[allData.length - 1];
+
+        // Render the legend once the bars are known: the "Other" swatch is shown
+        // only if an "Other" bucket bar was actually produced, not merely because
+        // "Limit Steps" is on.
+        const hasOtherBar = this.barChartData.some(d => d.displayName === "Other");
+        this.legendHeight = renderLegend(this.legendContainer, renderSettings, hasOtherBar);
 
         this.interactions.configure({ allowInteractions: true, isHighContrast: this.isHighContrast });
         new ChartRenderer({

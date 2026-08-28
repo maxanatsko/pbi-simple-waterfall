@@ -6,10 +6,10 @@ type Selection = d3.Selection<any, any, any, any>;
 
 /** Draw the sentiment legend into `legendContainer`. Returns the legend height
  *  (0 when the legend is off), which the caller subtracts from the viewport
- *  height. Covers every pillar colour in play -- favourable, adverse, the total
- *  pillar, and (when breakdown steps are limited) the "Other" bucket -- not just
+ *  height. Covers every pillar colour actually drawn -- favourable, adverse, the
+ *  total pillar, and the "Other" bucket when `hasOtherBar` -- not just
  *  favourable / adverse. */
-export function renderLegend(legendContainer: Selection, renderSettings: RenderSettings): number {
+export function renderLegend(legendContainer: Selection, renderSettings: RenderSettings, hasOtherBar: boolean): number {
     legendContainer.selectAll('svg').remove();
     if (!(renderSettings.useSentimentFeatures && renderSettings.legendShow)) {
         legendContainer.style('height', 0 + "pt");
@@ -21,7 +21,7 @@ export function renderLegend(legendContainer: Selection, renderSettings: RenderS
         { color: renderSettings.sentimentColorAdverse, text: renderSettings.legendTextAdverse },
         { color: renderSettings.sentimentColorTotal, text: "Total" },
     ];
-    if (renderSettings.limitBreakdown) {
+    if (hasOtherBar) {
         entries.push({ color: renderSettings.sentimentColorOther, text: "Other" });
     }
 

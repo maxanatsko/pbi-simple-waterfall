@@ -3,7 +3,8 @@ import VisualUpdateOptions = powerbi.extensibility.visual.VisualUpdateOptions;
 import IVisualHost = powerbi.extensibility.visual.IVisualHost;
 import DataViewMatrixNode = powerbi.DataViewMatrixNode;
 import ISelectionId = powerbi.visuals.ISelectionId;
-import { VisualSettings, DEFAULT_GREY } from "./settings";
+import { DEFAULT_GREY } from "./settings";
+import { RenderSettings } from "./renderSettings";
 import { BarChartDataPoint, createBarChartDataPoint } from "./dataPoint";
 import { ValueFormatter, resolveFormat } from "./valueFormatting";
 import { requireMatrixDataView, findLowestLevels } from "./matrix";
@@ -15,7 +16,7 @@ import { SORT_EPSILON, SORT_EPSILON_MAX } from "./constants";
 export interface WaterfallDataContext {
     options: VisualUpdateOptions;
     host: IVisualHost;
-    settings: VisualSettings;
+    renderSettings: RenderSettings;
     isHighContrast: boolean;
     colorPalette: powerbi.extensibility.ISandboxExtendedColorPalette;
     formatter: ValueFormatter;
@@ -32,12 +33,12 @@ export class WaterfallDataBuilder {
             return this.ctx.colorPalette.background.value;
         }
         if (isPillar == 1) {
-            barColor = this.ctx.settings.sentimentColor.sentimentColorTotal;
+            barColor = this.ctx.renderSettings.sentimentColorTotal;
         } else {
             if (value < 0) {
-                barColor = this.ctx.settings.sentimentColor.sentimentColorAdverse;
+                barColor = this.ctx.renderSettings.sentimentColorAdverse;
             } else {
-                barColor = this.ctx.settings.sentimentColor.sentimentColorFavourable;
+                barColor = this.ctx.renderSettings.sentimentColorFavourable;
             }
         }
         return barColor;
@@ -47,44 +48,44 @@ export class WaterfallDataBuilder {
         if (this.ctx.isHighContrast) {
             return this.ctx.colorPalette.foreground.value;
         }
-        if (this.ctx.settings.LabelsFormatting.useDefaultFontColor) {
-            return this.ctx.settings.LabelsFormatting.fontColor;
+        if (this.ctx.renderSettings.labelsUseDefaultFontColor) {
+            return this.ctx.renderSettings.labelsFontColor;
         } else {
             if (isPillar == 1) {
-                return this.ctx.settings.LabelsFormatting.sentimentFontColorTotal;
+                return this.ctx.renderSettings.labelsSentimentFontColorTotal;
             } else if (value < 0) {
-                return this.ctx.settings.LabelsFormatting.sentimentFontColorAdverse;
+                return this.ctx.renderSettings.labelsSentimentFontColorAdverse;
             } else {
-                return this.ctx.settings.LabelsFormatting.sentimentFontColorFavourable;
+                return this.ctx.renderSettings.labelsSentimentFontColorFavourable;
             }
         }
     }
     private getLabelPosition(isPillar: number, value: number) {
-        if (this.ctx.settings.LabelsFormatting.useDefaultLabelPositioning) {
-            return this.ctx.settings.LabelsFormatting.labelPosition;
+        if (this.ctx.renderSettings.labelsUseDefaultPositioning) {
+            return this.ctx.renderSettings.labelsPosition;
         } else {
             if (isPillar == 1) {
-                return this.ctx.settings.LabelsFormatting.labelPositionTotal;
+                return this.ctx.renderSettings.labelsPositionTotal;
             } else if (value < 0) {
-                return this.ctx.settings.LabelsFormatting.labelPositionAdverse;
+                return this.ctx.renderSettings.labelsPositionAdverse;
             } else {
-                return this.ctx.settings.LabelsFormatting.labelPositionFavourable;
+                return this.ctx.renderSettings.labelsPositionFavourable;
             }
         }
 
     }
     private applyPerPointFormatting(dataPoint: BarChartDataPoint, objects: any, gateFontColorOnSentiment: boolean = true, gateLabelPositioningOnSentiment: boolean = true) {
         if (objects) {
-            if (objects.sentimentColor && !this.ctx.settings.chartOrientation.useSentimentFeatures) {
+            if (objects.sentimentColor && !this.ctx.renderSettings.useSentimentFeatures) {
                 dataPoint.customBarColor = (objects as any)["sentimentColor"]["fill"]["solid"]["color"];
             } else {
                 dataPoint.customBarColor = this.getfillColor(dataPoint.isPillar, dataPoint.value);
             }
 
             const fontColorEnabled = gateFontColorOnSentiment
-                ? !this.ctx.settings.chartOrientation.useSentimentFeatures
+                ? !this.ctx.renderSettings.useSentimentFeatures
                 : true;
-            if (objects.LabelsFormatting && fontColorEnabled && !this.ctx.settings.LabelsFormatting.useDefaultFontColor) {
+            if (objects.LabelsFormatting && fontColorEnabled && !this.ctx.renderSettings.labelsUseDefaultFontColor) {
                 if (objects.LabelsFormatting.fill) {
                     dataPoint.customFontColor = (objects as any)["LabelsFormatting"]["fill"]["solid"]["color"];
                 } else {
@@ -95,9 +96,9 @@ export class WaterfallDataBuilder {
             }
 
             const labelPositionEnabled = gateLabelPositioningOnSentiment
-                ? !this.ctx.settings.chartOrientation.useSentimentFeatures
+                ? !this.ctx.renderSettings.useSentimentFeatures
                 : true;
-            if (objects.LabelsFormatting && labelPositionEnabled && !this.ctx.settings.LabelsFormatting.useDefaultLabelPositioning) {
+            if (objects.LabelsFormatting && labelPositionEnabled && !this.ctx.renderSettings.labelsUseDefaultPositioning) {
                 if (objects.LabelsFormatting.labelPosition) {
                     dataPoint.customLabelPositioning = objects["LabelsFormatting"]["labelPosition"] as string;
                 } else {
@@ -121,7 +122,7 @@ export class WaterfallDataBuilder {
         for (let index = 0; index < dataView.matrix.columns.root.children!.length; index++) {
             dataView.matrix.rows.root.children!.forEach((x: DataViewMatrixNode) => {
                 var checkforZero = false;
-                if (this.ctx.settings.LabelsFormatting.HideZeroBlankValues && Number(x.values![index].value) == 0) {
+                if (this.ctx.renderSettings.labelsHideZeroBlankValues && Number(x.values![index].value) == 0) {
                     checkforZero = true;
                 }
                 if (checkforZero == false) {
@@ -186,7 +187,7 @@ export class WaterfallDataBuilder {
     }
     private sortVisualData(visualData: BarChartDataPoint[], drillable: boolean) {
         visualData.sort((a: BarChartDataPoint, b: BarChartDataPoint) => {
-            switch (this.ctx.settings.chartOrientation.sortData) {
+            switch (this.ctx.renderSettings.sortData) {
                 case 3:
                     if (Math.floor(a.sortOrderIndex) === Math.floor(b.sortOrderIndex)) {
                         return parseFloat(a.value.toString()) - parseFloat(b.value.toString());
@@ -229,7 +230,7 @@ export class WaterfallDataBuilder {
                     Measure1Value = +allMeasureValues[indexMeasures][nodeItems].value;
                     Measure2Value = +allMeasureValues[indexMeasures + 1][nodeItems].value;
                     var valueDifference = Measure2Value - Measure1Value;
-                    var HideZeroBlankValues: boolean = this.ctx.settings.LabelsFormatting.HideZeroBlankValues;                    
+                    var HideZeroBlankValues: boolean = this.ctx.renderSettings.labelsHideZeroBlankValues;                    
                     if (HideZeroBlankValues && valueDifference == 0) {
                         // hidden: drop this zero/blank step
                     } else {
@@ -253,7 +254,7 @@ export class WaterfallDataBuilder {
             sortOrderIndex = sortOrderIndex + 2;
             visualData.push(dataPillar);
         }
-        if (this.ctx.settings.chartOrientation.limitBreakdown) {
+        if (this.ctx.renderSettings.limitBreakdown) {
             visualData = this.limitBreakdownsteps(options, visualData);
         }
         // Sort the [visualData] in order of the display
@@ -321,7 +322,7 @@ export class WaterfallDataBuilder {
         var orderIndex = 0;
         dataView.matrix.rows.root.children!.forEach((x: DataViewMatrixNode) => {
             var checkforZero = false;
-            if (this.ctx.settings.LabelsFormatting.HideZeroBlankValues && Number(x.values![measureIndex].value) == 0) {
+            if (this.ctx.renderSettings.labelsHideZeroBlankValues && Number(x.values![measureIndex].value) == 0) {
                 checkforZero = true;
             }
             if (checkforZero == false) {
@@ -373,10 +374,10 @@ export class WaterfallDataBuilder {
                 visualData.push(data2);
             }
         });
-        if (!hasPillar && this.ctx.settings.definePillars.Totalpillar) {
+        if (!hasPillar && this.ctx.renderSettings.showTotalPillar) {
             visualData.push(this.addTotalLine(visualData, options));
         }
-        if (this.ctx.settings.chartOrientation.limitBreakdown) {
+        if (this.ctx.renderSettings.limitBreakdown) {
             visualData = this.limitBreakdownsteps(options,visualData);
         }
         visualData = this.sortVisualData(visualData, false);
@@ -392,7 +393,7 @@ export class WaterfallDataBuilder {
                 return Math.round(a.sortOrderIndexforLimitBreakdown) - Math.round(b.sortOrderIndexforLimitBreakdown);
             }
         });
-        var limit = this.ctx.settings.chartOrientation.maxBreakdown;
+        var limit = this.ctx.renderSettings.maxBreakdown;
         var limitcounter = 0;
         var newOther: any[] = [];
         var otherTotalValue = 0;
@@ -469,16 +470,16 @@ export class WaterfallDataBuilder {
         data2.type = dataView.matrix.rows.levels[0].sources[0].type;
         data2.category = "defaultBreakdownStepOther" + sortOrderIndex;
         data2.displayName = "Other";
-        data2.customBarColor = this.ctx.settings.sentimentColor.sentimentColorOther;
-        if (this.ctx.settings.LabelsFormatting.useDefaultFontColor) {
-            data2.customFontColor = this.ctx.settings.LabelsFormatting.fontColor
+        data2.customBarColor = this.ctx.renderSettings.sentimentColorOther;
+        if (this.ctx.renderSettings.labelsUseDefaultFontColor) {
+            data2.customFontColor = this.ctx.renderSettings.labelsFontColor
         } else {
-            data2.customFontColor = this.ctx.settings.LabelsFormatting.sentimentFontColorOther;
+            data2.customFontColor = this.ctx.renderSettings.labelsSentimentFontColorOther;
         }
-        if (this.ctx.settings.LabelsFormatting.useDefaultLabelPositioning) {
-            data2.customLabelPositioning = this.ctx.settings.LabelsFormatting.labelPosition
+        if (this.ctx.renderSettings.labelsUseDefaultPositioning) {
+            data2.customLabelPositioning = this.ctx.renderSettings.labelsPosition
         } else {
-            data2.customLabelPositioning = this.ctx.settings.LabelsFormatting.labelPositionOther;
+            data2.customLabelPositioning = this.ctx.renderSettings.labelsPositionOther;
         }
         data2.isPillar = 0;
         data2.toolTipValue1Formatted = this.ctx.formatter.label(data2);
@@ -513,7 +514,7 @@ export class WaterfallDataBuilder {
             Measure1Value = +allMeasureValues[indexMeasures][nodeItems].value;
 
             var valueDifference = Measure1Value;
-            var HideZeroBlankValues: boolean = this.ctx.settings.LabelsFormatting.HideZeroBlankValues;
+            var HideZeroBlankValues: boolean = this.ctx.renderSettings.labelsHideZeroBlankValues;
             if (HideZeroBlankValues && valueDifference == 0) {
 
                 // hidden: drop this zero/blank step
@@ -529,7 +530,7 @@ export class WaterfallDataBuilder {
             }
 
         }
-        if (this.ctx.settings.definePillars.Totalpillar) {
+        if (this.ctx.renderSettings.showTotalPillar) {
             visualData.push(this.addTotalLine(visualData, options));
         }
 

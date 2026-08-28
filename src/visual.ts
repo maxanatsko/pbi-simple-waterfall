@@ -36,6 +36,7 @@ import { ITooltipServiceWrapper, createTooltipServiceWrapper } from "powerbi-vis
 import ISelectionManager = powerbi.extensibility.ISelectionManager;
 import * as d3 from "d3";
 import { VisualSettings, VisualFormattingSettingsModel } from "./settings";
+import { RenderSettings } from "./renderSettings";
 import { FormattingSettingsService } from "powerbi-visuals-utils-formattingmodel";
 import { BarChartDataPoint } from "./dataPoint";
 import { ValueFormatter, gridlineStrokeWidth } from "./valueFormatting";
@@ -136,7 +137,8 @@ export class Visual implements IVisual {
             labelDecimals: this.visualSettings.LabelsFormatting.decimalPlaces,
         });
         this.chartContainer.selectAll('svg').remove();
-        this.legendHeight = renderLegend(this.legendContainer, this.visualSettings);
+        const renderSettings = new RenderSettings(this.visualSettings);
+        this.legendHeight = renderLegend(this.legendContainer, renderSettings);
         if (dataView.matrix.rows.levels.length != 1){
             this.visualSettings.chartOrientation.limitBreakdown=false;
         }
@@ -144,7 +146,7 @@ export class Visual implements IVisual {
         const builder = new WaterfallDataBuilder({
             options,
             host: this.host,
-            settings: this.visualSettings,
+            renderSettings,
             isHighContrast: this.isHighContrast,
             colorPalette: this.colorPalette,
             formatter: this.formatter,
@@ -171,7 +173,7 @@ export class Visual implements IVisual {
         new ChartRenderer({
             chartContainer: this.chartContainer,
             orientationName: this.visualSettings.chartOrientation.orientation == "Horizontal" ? "Horizontal" : "Vertical",
-            settings: this.visualSettings,
+            renderSettings,
             barChartData: this.barChartData,
             allData,
             dataView,

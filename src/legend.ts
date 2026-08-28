@@ -1,5 +1,5 @@
 import * as d3 from "d3";
-import { VisualSettings } from "./settings";
+import { RenderSettings } from "./renderSettings";
 import { LEGEND_CIRCLE_RADIUS_FACTOR } from "./constants";
 
 type Selection = d3.Selection<any, any, any, any>;
@@ -7,9 +7,9 @@ type Selection = d3.Selection<any, any, any, any>;
 /** Draw the favourable / adverse sentiment legend into `legendContainer`.
  *  Returns the legend height (0 when the legend is off), which the caller
  *  subtracts from the viewport height. */
-export function renderLegend(legendContainer: Selection, settings: VisualSettings): number {
+export function renderLegend(legendContainer: Selection, renderSettings: RenderSettings): number {
     legendContainer.selectAll('svg').remove();
-    if (settings.chartOrientation.useSentimentFeatures && settings.Legend.show) {
+    if (renderSettings.useSentimentFeatures && renderSettings.legendShow) {
         var circleFavourableSVG = legendContainer.append('svg');
 
         var circleFavourable = circleFavourableSVG.append('circle');
@@ -18,10 +18,10 @@ export function renderLegend(legendContainer: Selection, settings: VisualSetting
         var textFavourable = textFavourableSVG.append('text')
             .attr("x", 0)
             .attr("y", "75%")
-            .style('font-size', settings.Legend.fontSize + "pt")
-            .text(settings.Legend.textFavourable)
-            .style('font-family', settings.Legend.fontFamily)
-            .style('fill', settings.Legend.fontColor);
+            .style('font-size', renderSettings.legendFontSize + "pt")
+            .text(renderSettings.legendTextFavourable)
+            .style('font-family', renderSettings.legendFontFamily)
+            .style('fill', renderSettings.legendFontColor);
 
         var textBoxSize;
         var textBoxSizeHeight;
@@ -42,7 +42,7 @@ export function renderLegend(legendContainer: Selection, settings: VisualSetting
             .attr("r", textBoxSizeHeight / 2 * LEGEND_CIRCLE_RADIUS_FACTOR)
             .attr('cx', textBoxSizeHeight / 2)
             .attr('cy', textBoxSizeHeight / 2)
-            .attr("fill", settings.sentimentColor.sentimentColorFavourable);
+            .attr("fill", renderSettings.sentimentColorFavourable);
 
         var circleAdverseSVG = legendContainer.append('svg');
 
@@ -52,10 +52,10 @@ export function renderLegend(legendContainer: Selection, settings: VisualSetting
         var textAdverse = textAdverseSVG.append('text')
             .attr("x", 0)
             .attr("y", "75%")
-            .style('font-size', settings.Legend.fontSize + "pt")
-            .text(settings.Legend.textAdverse)
-            .style('font-family', settings.Legend.fontFamily)
-            .style('fill', settings.Legend.fontColor);
+            .style('font-size', renderSettings.legendFontSize + "pt")
+            .text(renderSettings.legendTextAdverse)
+            .style('font-family', renderSettings.legendFontFamily)
+            .style('fill', renderSettings.legendFontColor);
 
 
         textBoxSize = textAdverse.node()!.getBoundingClientRect();
@@ -74,7 +74,7 @@ export function renderLegend(legendContainer: Selection, settings: VisualSetting
             .attr("r", textBoxSizeHeight / 2 * LEGEND_CIRCLE_RADIUS_FACTOR)
             .attr('cx', textBoxSizeHeight / 2)
             .attr('cy', textBoxSizeHeight / 2)
-            .attr("fill", settings.sentimentColor.sentimentColorAdverse);
+            .attr("fill", renderSettings.sentimentColorAdverse);
         legendContainer
             .style('height', textBoxSizeHeight + "pt");
         return textBoxSizeHeight;

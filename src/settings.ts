@@ -33,6 +33,7 @@ import DataViewObjectsParser = dataViewObjectsParser.DataViewObjectsParser;
 import DataView = powerbi.DataView;
 import VisualEnumerationInstanceKinds = powerbi.VisualEnumerationInstanceKinds;
 import { BarChartDataPoint } from "./dataPoint";
+import { VisualMode } from "./visualType";
 
 /* ============================================================================
  * Legacy read model
@@ -396,16 +397,16 @@ export class VisualFormattingSettingsModel extends formattingSettings.Model {
    * after visualType / barChartData are known.
    */
   public applyState(
-    visualType: string,
+    visualType: VisualMode,
     settings: VisualSettings,
     barChartData: BarChartDataPoint[],
     dataView: DataView,
     defaultXAxisGridlineStrokeWidth: number,
     defaultYAxisGridlineStrokeWidth: number
   ): void {
-    const isStatic = visualType === "static";
-    const isStaticCategory = visualType === "staticCategory";
-    const isStaticLike = isStatic || isStaticCategory;
+    const isStatic = visualType.isStatic;
+    const isStaticCategory = visualType.isStaticCategory;
+    const isStaticLike = visualType.isStaticLike;
     const singleLevel = dataView?.matrix?.rows?.levels?.length === 1;
     const useSentiment = settings.chartOrientation.useSentimentFeatures;
     const data = (barChartData ?? []).filter(d => d && d.category !== "defaultBreakdownStepOther");
@@ -419,7 +420,7 @@ export class VisualFormattingSettingsModel extends formattingSettings.Model {
 
     // ---- definePillars --------------------------------------------------
     const dp = this.definePillars;
-    dp.visible = isStaticLike || visualType === "drillableCategory";
+    dp.visible = isStaticLike || visualType.isDrillableCategory;
     dp.slices = [];
     if (isStatic) {
       for (const d of data) {
@@ -432,7 +433,7 @@ export class VisualFormattingSettingsModel extends formattingSettings.Model {
         }
       }
       dp.slices.push(dp.Totalpillar);
-    } else if (visualType === "drillableCategory") {
+    } else if (visualType.isDrillableCategory) {
       dp.slices.push(dp.Totalpillar);
     }
 

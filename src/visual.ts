@@ -45,6 +45,7 @@ import { WaterfallDataBuilder } from "./waterfallData";
 import { BarInteractions } from "./interactions";
 import { ChartRenderer } from "./chartRenderer";
 import { renderLegend } from "./legend";
+import { resolveVisualMode, VisualMode } from "./visualType";
 import { SCROLLBAR_BREATH } from "./constants";
 
 /** Best-effort message extraction from an unknown thrown value. */
@@ -64,7 +65,7 @@ export class Visual implements IVisual {
     private host: IVisualHost;
     private selectionManager: ISelectionManager;
     private tooltipServiceWrapper: ITooltipServiceWrapper;
-    private visualType!: string;
+    private visualType!: VisualMode;
     private visualUpdateOptions!: VisualUpdateOptions;
     private scrollbarBreath = SCROLLBAR_BREATH;
     private events: IVisualEventService;
@@ -153,20 +154,9 @@ export class Visual implements IVisual {
         });
         const levels = dataView.matrix.rows.levels.length;
         const sources = dataView.matrix.valueSources.length;
-        let allData: BarChartDataPoint[][];
-        if (levels === 0) {
-            this.visualType = "static";
-            allData = [builder.buildStatic()];
-        } else if (levels === 1 && sources === 1) {
-            this.visualType = "staticCategory";
-            allData = [builder.buildStaticCategory()];
-        } else if (sources === 1) {
-            this.visualType = "drillableCategory";
-            allData = builder.buildDrillableCategory();
-        } else {
-            this.visualType = "drillable";
-            allData = builder.buildDrillable();
-        }
+        const mode = resolveVisualMode(levels, sources);
+        const allData = mode.build(builder);
+        this.visualType = mode;
         this.barChartData = allData[allData.length - 1];
 
         this.interactions.configure({ allowInteractions: true, isHighContrast: this.isHighContrast });

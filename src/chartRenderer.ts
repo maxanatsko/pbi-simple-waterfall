@@ -20,6 +20,7 @@ import {
 } from "./constants";
 import { BarInteractions } from "./interactions";
 import { buildValueTooltip, buildCategoryTooltip, tooltipSelectionId } from "./tooltip";
+import { VisualMode } from "./visualType";
 
 /** Everything the render pipeline reads off the Visual. Built once per
  *  `update()`; the renderer owns all the mutable layout state internally. */
@@ -36,7 +37,7 @@ export interface ChartRenderContext {
     tooltipServiceWrapper: ITooltipServiceWrapper;
     isHighContrast: boolean;
     colorPalette: powerbi.extensibility.ISandboxExtendedColorPalette;
-    visualType: string;
+    visualType: VisualMode;
     width: number;
     height: number;
     legendHeight: number;
@@ -427,7 +428,7 @@ export class ChartRenderer {
 
         //reset selections when the visual is re-drawn
         this.ctx.interactions.resyncOnRedraw(this.bars);
-        if (this.ctx.visualType == "drillable" || this.ctx.visualType == "staticCategory" || this.ctx.visualType == "drillableCategory") {
+        if (this.ctx.visualType.isSelectable) {
             this.ctx.interactions.wireClick(this.bars);
         }
 
@@ -730,7 +731,7 @@ export class ChartRenderer {
             .attr('transform', o.axisGroupTransform(baseAxis, index, xBaseScale, myWidth, myAxisParentHeight));
         this.applyGridlineStyle(myxAxisParent.selectAll('path'), this.ctx.renderSettings.yAxisGridLineColor);
         var xAxislabels = myxAxisParent.selectAll(".tick text").data(currData).text((d: any) => d.displayName);
-        if (this.ctx.visualType == "drillable" || this.ctx.visualType == "staticCategory" || this.ctx.visualType == "drillableCategory") {
+        if (this.ctx.visualType.isSelectable) {
             this.ctx.interactions.wireClick(xAxislabels);
         }
         this.ctx.tooltipServiceWrapper.addTooltip(myxAxisParent.selectAll(".tick text"),

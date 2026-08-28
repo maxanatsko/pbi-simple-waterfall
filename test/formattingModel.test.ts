@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { VisualSettings, VisualFormattingSettingsModel } from "../src/settings";
+import { visualMode } from "../src/visualType";
 
 function fakeSelectionId(key: string): any {
   return { getSelector: () => ({ id: key }) };
@@ -35,7 +36,7 @@ describe("VisualFormattingSettingsModel.applyState", () => {
     settings.chartOrientation.useSentimentFeatures = false;
     const data = [row("A", 1), row("B"), row("C")];
 
-    model.applyState("static", settings, data, dataView(0), 5, 1);
+    model.applyState(visualMode("static"), settings, data, dataView(0), 5, 1);
 
     const pillars = findCard(model, "definePillars");
     expect(pillars.visible).toBe(true);
@@ -57,7 +58,7 @@ describe("VisualFormattingSettingsModel.applyState", () => {
     const settings = new VisualSettings();
     settings.chartOrientation.useSentimentFeatures = true;
 
-    model.applyState("static", settings, [row("A"), row("B")], dataView(0), 5, 1);
+    model.applyState(visualMode("static"), settings, [row("A"), row("B")], dataView(0), 5, 1);
 
     const barColor = findCard(model, "sentimentColor");
     expect(sliceNames(barColor)).toEqual([
@@ -71,7 +72,7 @@ describe("VisualFormattingSettingsModel.applyState", () => {
     const settings = new VisualSettings();
     settings.chartOrientation.useSentimentFeatures = false;
 
-    model.applyState("drillable", settings, [row("A"), row("B")], dataView(2), 5, 1);
+    model.applyState(visualMode("drillable"), settings, [row("A"), row("B")], dataView(2), 5, 1);
 
     expect(findCard(model, "definePillars").visible).toBe(false);
     expect(findCard(model, "Legend").visible).toBe(false);
@@ -86,7 +87,7 @@ describe("VisualFormattingSettingsModel.applyState", () => {
     const model = new VisualFormattingSettingsModel();
     const settings = new VisualSettings();
 
-    model.applyState("drillableCategory", settings, [row("A"), row("B")], dataView(3), 5, 1);
+    model.applyState(visualMode("drillableCategory"), settings, [row("A"), row("B")], dataView(3), 5, 1);
 
     const pillars = findCard(model, "definePillars");
     expect(pillars.visible).toBe(true);
@@ -99,12 +100,12 @@ describe("VisualFormattingSettingsModel.applyState", () => {
 
     const withTotal = new VisualFormattingSettingsModel();
     settings.definePillars.Totalpillar = true;
-    withTotal.applyState("staticCategory", settings, data, dataView(1), 5, 1);
+    withTotal.applyState(visualMode("staticCategory"), settings, data, dataView(1), 5, 1);
     expect(sliceNames(findCard(withTotal, "definePillars"))).toEqual(["Totalpillar"]);
 
     const noTotal = new VisualFormattingSettingsModel();
     settings.definePillars.Totalpillar = false;
-    noTotal.applyState("staticCategory", settings, data, dataView(1), 5, 1);
+    noTotal.applyState(visualMode("staticCategory"), settings, data, dataView(1), 5, 1);
     expect(sliceNames(findCard(noTotal, "definePillars"))).toEqual([
       "pillars", "pillars", "pillars", "Totalpillar",
     ]);
@@ -118,7 +119,7 @@ describe("VisualFormattingSettingsModel.applyState", () => {
     settings.yAxisFormatting.showYAxisValues = false;
     settings.yAxisFormatting.joinBars = true;
 
-    model.applyState("static", settings, [row("A")], dataView(0), 7, 2);
+    model.applyState(visualMode("static"), settings, [row("A")], dataView(0), 7, 2);
 
     const xa = findCard(model, "xAxisFormatting");
     expect(xa.barWidth.visible).toBe(true);          // fitToWidth off -> min width shown
@@ -139,7 +140,7 @@ describe("VisualFormattingSettingsModel.applyState", () => {
     settings.LabelsFormatting.useDefaultFontColor = false;
     const data = [row("A"), row("B")];
 
-    model.applyState("static", settings, data, dataView(0), 5, 1);
+    model.applyState(visualMode("static"), settings, data, dataView(0), 5, 1);
 
     const lf = findCard(model, "LabelsFormatting");
     const names = sliceNames(lf);
@@ -157,7 +158,7 @@ describe("VisualFormattingSettingsModel.applyState", () => {
     settings.LabelsFormatting.useDefaultLabelPositioning = false;
     settings.LabelsFormatting.useDefaultFontColor = false;
 
-    model.applyState("static", settings, [row("A")], dataView(0), 5, 1);
+    model.applyState(visualMode("static"), settings, [row("A")], dataView(0), 5, 1);
 
     const names = sliceNames(findCard(model, "LabelsFormatting"));
     expect(names).toEqual(expect.arrayContaining([

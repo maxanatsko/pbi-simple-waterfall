@@ -180,8 +180,18 @@ export class ChartRenderer {
             this.svg.attr("width", this.width);
             this.innerHeight = this.innerHeight - this.yAxisHeightHorizontal;
             this.svg.attr("height", this.innerHeight);
+            // The value-axis label strip has been carved off the top; rebuild so
+            // the category band scale lays the rows out over the real SVG height
+            // instead of the full container -- otherwise the last row (the total
+            // pillar) falls past the bottom edge and is clipped.
+            this.rebuildOrientation();
             this.checkBarWidth();
             findRightHorizontal = this.applyCategoryAxisLayout(this.gScrollable, allData);
+            // applyCategoryAxisLayout has measured the (left) category-label block
+            // as this.xAxisPosition. Rebuild again so the value scale reserves that
+            // width instead of running the full container width and pushing the
+            // domain maximum -- and the tall pillars -- off the right edge.
+            this.rebuildOrientation();
             this.svgYAxis.attr("width", this.innerWidth + 5);
             this.svgYAxis.attr("height", this.yAxisHeightHorizontal);
             this.createCrossAxis(this.svgYAxis, 0, findRightHorizontal);

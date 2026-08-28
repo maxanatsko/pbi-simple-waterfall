@@ -1,5 +1,6 @@
 import * as d3 from "d3";
 import { VisualSettings } from "./settings";
+import { LEGEND_CIRCLE_RADIUS_FACTOR } from "./constants";
 
 type Selection = d3.Selection<any, any, any, any>;
 
@@ -38,7 +39,7 @@ export function renderLegend(legendContainer: Selection, settings: VisualSetting
 
 
         circleFavourable
-            .attr("r", textBoxSizeHeight / 2 * .6)
+            .attr("r", textBoxSizeHeight / 2 * LEGEND_CIRCLE_RADIUS_FACTOR)
             .attr('cx', textBoxSizeHeight / 2)
             .attr('cy', textBoxSizeHeight / 2)
             .attr("fill", settings.sentimentColor.sentimentColorFavourable);
@@ -70,7 +71,7 @@ export function renderLegend(legendContainer: Selection, settings: VisualSetting
 
 
         circleAdverse
-            .attr("r", textBoxSizeHeight / 2 * .6)
+            .attr("r", textBoxSizeHeight / 2 * LEGEND_CIRCLE_RADIUS_FACTOR)
             .attr('cx', textBoxSizeHeight / 2)
             .attr('cy', textBoxSizeHeight / 2)
             .attr("fill", settings.sentimentColor.sentimentColorAdverse);

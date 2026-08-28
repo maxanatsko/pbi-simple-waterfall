@@ -7,6 +7,7 @@ import { VisualSettings, DEFAULT_GREY } from "./settings";
 import { BarChartDataPoint, createBarChartDataPoint } from "./dataPoint";
 import { ValueFormatter, resolveFormat } from "./valueFormatting";
 import { requireMatrixDataView, findLowestLevels } from "./matrix";
+import { SORT_EPSILON, SORT_EPSILON_MAX } from "./constants";
 
 /** Everything the data converters read that is not the matrix itself. Built
  *  once per `update()` and handed to WaterfallDataBuilder. The matrix dataView
@@ -363,7 +364,7 @@ export class WaterfallDataBuilder {
                     data2.sortOrderIndexforLimitBreakdown = sortOrderIndex;
                     sortOrderIndex = sortOrderIndex + 1
                 } else {
-                    sortOrderIndex = sortOrderIndex + + 0.000001;
+                    sortOrderIndex = sortOrderIndex + + SORT_EPSILON;
                     data2.sortOrderIndex = sortOrderIndex ;
                     data2.sortOrderIndexforLimitBreakdown = sortOrderIndex;
                 }
@@ -483,8 +484,8 @@ export class WaterfallDataBuilder {
         data2.toolTipValue1Formatted = this.ctx.formatter.label(data2);
         data2.toolTipDisplayValue1 = data2.category;
         data2.childrenCount = 1;
-        data2.sortOrderIndex = sortOrderIndex + 0.999999;
-        data2.sortOrderIndexforLimitBreakdown = sortOrderIndexforLimitBreakdown + 0.999999;        
+        data2.sortOrderIndex = sortOrderIndex + SORT_EPSILON_MAX;
+        data2.sortOrderIndexforLimitBreakdown = sortOrderIndexforLimitBreakdown + SORT_EPSILON_MAX;        
         data2.showbreakdownstep = true;
         return data2;
 

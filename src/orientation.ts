@@ -1,4 +1,5 @@
 import * as d3 from "d3";
+import { BAND_PADDING } from "./constants";
 
 export type OrientationName = "Vertical" | "Horizontal";
 
@@ -55,7 +56,7 @@ export class Orientation {
     public get scrollOrient(): "x" | "y" { return this.name === "Vertical" ? "x" : "y"; }
 
     public mainBand(domain: string[]): d3.ScaleBand<string> {
-        return d3.scaleBand().domain(domain).range(this.mainRange).padding(0.2);
+        return d3.scaleBand().domain(domain).range(this.mainRange).padding(BAND_PADDING);
     }
     public mainAxis(scale: d3.ScaleBand<string>): d3.Axis<any> {
         const axis = this.name === "Vertical" ? d3.axisBottom(scale) : d3.axisLeft(scale);

@@ -10,6 +10,14 @@ import { BarChartDataPoint } from "./dataPoint";
 import { Orientation, OrientationName } from "./orientation";
 import { ValueFormatter, gridlineStrokeWidth } from "./valueFormatting";
 import { getMatrixLevelsAt } from "./matrix";
+import {
+    MARGIN_BUMP,
+    Y_AXIS_TICK_COUNT,
+    SCROLLBAR_TRACK_FILL,
+    SCROLLBAR_TRACK_OPACITY,
+    SCROLLBAR_THUMB_FILL,
+    SCROLLBAR_THUMB_OPACITY
+} from "./constants";
 import { BarInteractions } from "./interactions";
 import { buildValueTooltip, buildCategoryTooltip, tooltipSelectionId } from "./tooltip";
 
@@ -83,12 +91,12 @@ export class ChartRenderer {
         this.margin = o == "Horizontal"
             ? {
                 top: this.ctx.settings.margins.topMargin,
-                right: this.ctx.settings.margins.rightMargin + 20,
+                right: this.ctx.settings.margins.rightMargin + MARGIN_BUMP,
                 bottom: this.ctx.settings.margins.bottomMargin + 5,
                 left: this.ctx.settings.margins.leftMargin
             }
             : {
-                top: this.ctx.settings.margins.topMargin + 20,
+                top: this.ctx.settings.margins.topMargin + MARGIN_BUMP,
                 right: this.ctx.settings.margins.rightMargin,
                 bottom: this.ctx.settings.margins.bottomMargin,
                 left: this.ctx.settings.margins.leftMargin
@@ -178,7 +186,7 @@ export class ChartRenderer {
             .domain([minValue, maxValue])
             .range([innerHeight, 0]);
 
-        const ticksCount = 5;
+        const ticksCount = Y_AXIS_TICK_COUNT;
         const yScaleTickValues = yScale.ticks(ticksCount);
 
         //realigning the xaxis to the first tick value of yaxis    
@@ -521,8 +529,8 @@ export class ChartRenderer {
                     .attr('height', o.scrollOrient == "x" ? this.ctx.scrollbarBreath : this.innerHeight)
                     .attr('x', o.scrollOrient == "x" ? 0 : this.width - this.ctx.scrollbarBreath - this.margin.left)
                     .attr('y', o.scrollOrient == "x" ? this.height - this.ctx.scrollbarBreath : 0)
-                    .attr('fill', '#e1e1e1')
-                    .attr('opacity', 0.5)
+                    .attr('fill', SCROLLBAR_TRACK_FILL)
+                    .attr('opacity', SCROLLBAR_TRACK_OPACITY)
                     .attr('rx', 4)
                     .attr('ry', 4);
 
@@ -542,7 +550,7 @@ export class ChartRenderer {
                     var scrollbar: d3.Selection<any, any, any, any> = scrollBarGroup.append('rect')
                         .attr('width', scrollbarwidth).attr('height', this.ctx.scrollbarBreath)
                         .attr('x', 0).attr('y', this.height - this.ctx.scrollbarBreath)
-                        .attr('fill', '#000').attr('opacity', 0.24).attr('rx', 4).attr('ry', 4);
+                        .attr('fill', SCROLLBAR_THUMB_FILL).attr('opacity', SCROLLBAR_THUMB_OPACITY).attr('rx', 4).attr('ry', 4);
                     var scrollBarDragBar = d3.drag().on("start", (event) => {
                         dragStartPosition = event.x;
                         dragScrollBarXStartposition = parseInt(scrollbar.attr('x'));
@@ -571,7 +579,7 @@ export class ChartRenderer {
                     var scrollbar: d3.Selection<any, any, any, any> = scrollBarGroup.append('rect')
                         .attr('width', this.ctx.scrollbarBreath).attr('height', scrollbarHeight)
                         .attr('x', this.width - this.ctx.scrollbarBreath - this.margin.left).attr('y', 0)
-                        .attr('fill', '#000').attr('opacity', 0.24).attr('rx', 4).attr('ry', 4);
+                        .attr('fill', SCROLLBAR_THUMB_FILL).attr('opacity', SCROLLBAR_THUMB_OPACITY).attr('rx', 4).attr('ry', 4);
                     var scrollBarDragBar = d3.drag().on("start", (event) => {
                         dragStartPosition = event.y;
                         dragScrollBarXStartposition = parseInt(scrollbar.attr('y'));

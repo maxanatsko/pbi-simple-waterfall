@@ -44,6 +44,7 @@ import { WaterfallDataBuilder } from "./waterfallData";
 import { BarInteractions } from "./interactions";
 import { ChartRenderer } from "./chartRenderer";
 import { renderLegend } from "./legend";
+import { SCROLLBAR_BREATH } from "./constants";
 
 /** Best-effort message extraction from an unknown thrown value. */
 function toErrorMessage(e: unknown): string {
@@ -64,7 +65,7 @@ export class Visual implements IVisual {
     private tooltipServiceWrapper: ITooltipServiceWrapper;
     private visualType!: string;
     private visualUpdateOptions!: VisualUpdateOptions;
-    private scrollbarBreath = 8;
+    private scrollbarBreath = SCROLLBAR_BREATH;
     private events: IVisualEventService;
     private locale: string;
     private colorPalette: powerbi.extensibility.ISandboxExtendedColorPalette;

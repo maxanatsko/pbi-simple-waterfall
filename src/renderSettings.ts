@@ -74,15 +74,6 @@ export class RenderSettings {
     get yAxisJoinBarsColor(): string { return this.settings.yAxisFormatting.joinBarsColor; }
     get yAxisJoinBarsStrokeWidth(): number { return this.settings.yAxisFormatting.joinBarsStrokeWidth; }
 
-    /** Persist the computed y-axis range back onto the raw settings so the
-     *  "Range" starting-point option reads it on the next update. */
-    public persistYAxisRange(minValue: number, maxValue: number): void {
-        this.settings.yAxisFormatting.YAxisDataPointRangeStart = minValue;
-        this.settings.yAxisFormatting.YAxisDataPointRangeEnd = maxValue;
-    }
-    get yAxisRangeStart(): number { return this.settings.yAxisFormatting.YAxisDataPointRangeStart; }
-    get yAxisRangeEnd(): number { return this.settings.yAxisFormatting.YAxisDataPointRangeEnd; }
-
     // ---- chart orientation ----------------------------------------------
     get useSentimentFeatures(): boolean { return this.settings.chartOrientation.useSentimentFeatures; }
     get limitBreakdown(): boolean { return this.settings.chartOrientation.limitBreakdown; }

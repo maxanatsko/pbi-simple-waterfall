@@ -438,6 +438,11 @@ export class WaterfallDataBuilder {
 
         var visualData: BarChartDataPoint[] = [];
         var hasPillar = false;
+        // "Show Cumulative Total" and per-datapoint pillars are mutually exclusive.
+        // While the cumulative total is on, ignore any persisted per-node `pillars`
+        // objects so they can't suppress addTotalLine (or render as a stale
+        // mid-series pillar bar that re-bases the running cumulative).
+        const cumulativeTotalMode = this.ctx.renderSettings.showTotalPillar;
         //*******************************************************************
         //This will always be zero as it should only have 1 measure
         var measureIndex = 0;
@@ -463,16 +468,10 @@ export class WaterfallDataBuilder {
                 data2.category = this.ctx.formatter.category(x.value, data2.type, data2.xAxisFormat);
                 data2.displayName = this.ctx.formatter.category(x.value, data2.type, data2.xAxisFormat);
                 if (x.objects) {
-                    if (x.objects.definePillars) {
-                        if (x.objects["definePillars"]["pillars"]) {
-                            data2.isPillar = 1;
-                            hasPillar = true;
-                        } else {
-                            data2.isPillar = 0;
-                        }
+                    if (!cumulativeTotalMode && x.objects.definePillars && x.objects["definePillars"]["pillars"]) {
+                        data2.isPillar = 1;
+                        hasPillar = true;
                     } else {
-                        /* data2.category = x.value;
-                        data2.displayName = x.value; */
                         data2.isPillar = 0;
                     }
                     this.applyPerPointFormatting(data2, x.objects, false);

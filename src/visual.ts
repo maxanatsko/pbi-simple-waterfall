@@ -39,7 +39,7 @@ import { VisualSettings, VisualFormattingSettingsModel } from "./settings";
 import { RenderSettings } from "./renderSettings";
 import { FormattingSettingsService } from "powerbi-visuals-utils-formattingmodel";
 import { BarChartDataPoint } from "./dataPoint";
-import { ValueFormatter, gridlineStrokeWidth } from "./valueFormatting";
+import { ValueFormatter } from "./valueFormatting";
 import { requireMatrixDataView } from "./matrix";
 import { WaterfallDataBuilder } from "./waterfallData";
 import { BarInteractions } from "./interactions";
@@ -117,9 +117,7 @@ export class Visual implements IVisual {
             this.visualType,
             this.visualSettings,
             this.barChartData,
-            dataView,
-            gridlineStrokeWidth(this.visualSettings, "x"),
-            gridlineStrokeWidth(this.visualSettings, "y"));
+            dataView);
         return this.formattingSettingsService.buildFormattingModel(model);
     }
     public update(options: VisualUpdateOptions) {

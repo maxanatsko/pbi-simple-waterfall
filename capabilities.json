@@ -418,20 +418,6 @@
                         ]
                     }
                 },
-                "YAxisDataPointRangeStart": {
-                    "displayName": "Start Range  (approx.)",
-                    "description": "Pleae specify an approximate start value. The actual value might be different",
-                    "type": {
-                        "numeric": true
-                    }
-                },
-                "YAxisDataPointRangeEnd": {
-                    "displayName": "End Range (approx.)",
-                    "description": "Pleae specify an approximate end value. The actual value might be different",
-                    "type": {
-                        "numeric": true
-                    }
-                },
                 "showYAxisValues": {
                     "displayName": "Show / Hide Values",
                     "description": "Show / Hide Values",

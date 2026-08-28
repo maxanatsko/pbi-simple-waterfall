@@ -127,7 +127,6 @@ export class ChartRenderer {
 
         const { minValue, maxValue, yScaleTickValues } = this.computeMinMaxValue(
             this.ctx.barChartData,
-            this.ctx.renderSettings,
             this.innerHeight);
         this.minValue = minValue;
         this.maxValue = maxValue;
@@ -140,8 +139,6 @@ export class ChartRenderer {
             xAxisPosition: this.xAxisPosition,
             scrollbarBreath: this.ctx.scrollbarBreath
         });
-        this.persistYAxisRange(minValue, maxValue);
-
         this.gScrollable = this.svg.append('g');
         const crossAxisExtent = this.measureCrossAxisExtent(
             this.gScrollable,
@@ -209,20 +206,11 @@ export class ChartRenderer {
 
     private computeMinMaxValue(
         data: BarChartDataPoint[],
-        rs: RenderSettings,
         innerHeight: number,
     ): { minValue: number; maxValue: number; yScaleTickValues: number[] } {
-        let minValue: number;
-        let maxValue: number;
-        if (rs.yAxisDataPointOption == "Range"
-            && rs.yAxisRangeStart != 0 && rs.yAxisRangeEnd != 0) {
-            minValue = rs.yAxisRangeStart;
-            maxValue = rs.yAxisRangeEnd;
-        } else {
-            const { min, max } = this.cumulativeExtent(data);
-            minValue = min;
-            maxValue = max;
-        }
+        const { min, max } = this.cumulativeExtent(data);
+        let minValue: number = min;
+        let maxValue: number = max;
 
         const yScale = d3.scaleLinear()
             .domain([minValue, maxValue])
@@ -258,10 +246,6 @@ export class ChartRenderer {
         }
 
         return { minValue, maxValue, yScaleTickValues };
-    }
-
-    private persistYAxisRange(minValue: number, maxValue: number): void {
-        this.ctx.renderSettings.persistYAxisRange(minValue, maxValue);
     }
 
     private applyCategoryAxisLayout(gParent: any, allDatatemp: any): number {
@@ -543,7 +527,7 @@ export class ChartRenderer {
     }
     private findXaxisAdjustment = (data: any): number => {
         var returnvalue = 0;
-        if (this.ctx.renderSettings.yAxisDataPointOption == "Auto" || this.ctx.renderSettings.yAxisDataPointOption == "Range") {
+        if (this.ctx.renderSettings.yAxisDataPointOption == "Auto") {
 
             /************************************************
                 this function is used to move the Yaxis to reduce the pillars size so that they don't start from zero, if pillars are all positive or negative
@@ -814,7 +798,7 @@ export class ChartRenderer {
             .call(myxAxisParentx);
         myxAxisParent
             .attr('transform', o.axisGroupTransform(baseAxis, index, xBaseScale, myWidth, myAxisParentHeight));
-        this.applyGridlineStyle(myxAxisParent.selectAll('path'), this.ctx.renderSettings.yAxisGridLineColor);
+        this.applyGridlineStyle(myxAxisParent.selectAll('path'), this.ctx.renderSettings.xAxisGridLineColor);
         var xAxislabels = myxAxisParent.selectAll(".tick text").data(currData).text((d: any) => d.displayName);
         if (this.ctx.visualType.isSelectable) {
             this.ctx.interactions.wireClick(xAxislabels);

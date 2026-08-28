@@ -14,7 +14,8 @@ export interface BarChartDataPoint {
     selectionId: ISelectionId | null;
     childrenCount: number;
     sortOrderIndex: number;
-    sortOrderIndexforLimitBreakdown: number;
+    sortGroupIndex: number;
+    sortWithinGroupIndex: number;
     customBarColor: string;
     customFontColor: string;
     customLabelPositioning: string;
@@ -41,7 +42,8 @@ export function createBarChartDataPoint(): BarChartDataPoint {
         selectionId: null,
         childrenCount: 0,
         sortOrderIndex: 0,
-        sortOrderIndexforLimitBreakdown: 0,
+        sortGroupIndex: 0,
+        sortWithinGroupIndex: 0,
         customBarColor: "",
         customFontColor: "",
         customLabelPositioning: "",

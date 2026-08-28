@@ -10,6 +10,11 @@ import { ValueFormatter, resolveFormat } from "./valueFormatting";
 import { requireMatrixDataView, findLowestLevels } from "./matrix";
 import { SORT_EPSILON, SORT_EPSILON_MAX } from "./constants";
 
+/** Stable ordering key: sort by group, then by position within the group.
+ *  Replaces the old float-packed sortOrderIndex (precision loss with many nodes). */
+const compareBySortKey = (a: BarChartDataPoint, b: BarChartDataPoint) =>
+    (a.sortGroupIndex - b.sortGroupIndex) || (a.sortWithinGroupIndex - b.sortWithinGroupIndex);
+
 /** Everything the data converters read that is not the matrix itself. Built
  *  once per `update()` and handed to WaterfallDataBuilder. The matrix dataView
  *  is re-derived from `options` via requireMatrixDataView in each converter. */
@@ -178,6 +183,8 @@ export class WaterfallDataBuilder {
                     } else {
                         data2.sortOrderIndex = sortOrderIndex;
                     }
+                    data2.sortGroupIndex = data2.sortOrderIndex;
+                    data2.sortWithinGroupIndex = 0;
                     visualData.push(data2);
                 }
             });
@@ -189,17 +196,17 @@ export class WaterfallDataBuilder {
         visualData.sort((a: BarChartDataPoint, b: BarChartDataPoint) => {
             switch (this.ctx.renderSettings.sortData) {
                 case 3:
-                    if (Math.floor(a.sortOrderIndex) === Math.floor(b.sortOrderIndex)) {
+                    if (a.sortGroupIndex === b.sortGroupIndex) {
                         return parseFloat(a.value.toString()) - parseFloat(b.value.toString());
                     }
-                    return a.sortOrderIndex - b.sortOrderIndex;
+                    return compareBySortKey(a, b);
                 case 2:
-                    if (Math.floor(a.sortOrderIndex) === Math.floor(b.sortOrderIndex)) {
+                    if (a.sortGroupIndex === b.sortGroupIndex) {
                         return parseFloat(b.value.toString()) - parseFloat(a.value.toString());
                     }
-                    return a.sortOrderIndex - b.sortOrderIndex;
+                    return compareBySortKey(a, b);
                 default:
-                    return drillable ? a.sortOrderIndex - b.sortOrderIndex : 0;
+                    return drillable ? compareBySortKey(a, b) : 0;
             }
         });
         return visualData;
@@ -213,8 +220,7 @@ export class WaterfallDataBuilder {
         var allMeasureValues: any[] = [];
         // find all values and aggregate them in an array of array with each child in an array of a measure
         allMeasureValues = findLowestLevels(dataView, this.ctx.host, this.ctx.formatter);
-        var sortOrderPrecision = Math.pow(10, allMeasureValues.length * allMeasureValues[0].length.toString().length);
-        var sortOrderIndex = 1;
+        var maxNodes = Math.max(...allMeasureValues.map(m => m.length)) + 2;
         // calculate the difference between each measure and add them to an array as the step bars and then add the pillar bars [visualData]
         for (let indexMeasures = 0; indexMeasures < allMeasureValues.length; indexMeasures++) {
             var totalValueofMeasure = 0;
@@ -240,7 +246,9 @@ export class WaterfallDataBuilder {
                         var displayName: string = allMeasureValues[indexMeasures][nodeItems].displayName;
                         var category: string = dataView.matrix.valueSources[indexMeasures].displayName + allMeasureValues[indexMeasures][nodeItems].category.toString();
                         var selectionId = allMeasureValues[indexMeasures][nodeItems].selectionId;
-                        data2Category = this.getDataForCategory(valueDifference, (allMeasureValues[indexMeasures][nodeItems]["numberFormat"] || dataView.matrix.valueSources[indexMeasures].format), displayName, category, 0, selectionId, sortOrderIndex + ((nodeItems + 1) / sortOrderPrecision), 1, toolTipDisplayValue1, toolTipDisplayValue2, Measure1Value, Measure2Value);
+                        data2Category = this.getDataForCategory(valueDifference, (allMeasureValues[indexMeasures][nodeItems]["numberFormat"] || dataView.matrix.valueSources[indexMeasures].format), displayName, category, 0, selectionId, indexMeasures * maxNodes + (nodeItems + 1), 1, toolTipDisplayValue1, toolTipDisplayValue2, Measure1Value, Measure2Value);
+                        data2Category.sortGroupIndex = indexMeasures * 2 + 1;
+                        data2Category.sortWithinGroupIndex = nodeItems + 1;
                         visualData.push(data2Category);
                     }
                     
@@ -250,8 +258,9 @@ export class WaterfallDataBuilder {
             toolTipDisplayValue2 = null;
             Measure1Value = totalValueofMeasure;
             Measure2Value = null;                        
-            dataPillar = this.getDataForCategory(totalValueofMeasure, ((allMeasureValues[indexMeasures][0] && allMeasureValues[indexMeasures][0]["numberFormat"]) || dataView.matrix.valueSources[indexMeasures].format), dataView.matrix.valueSources[indexMeasures].displayName, dataView.matrix.valueSources[indexMeasures].displayName, 1, null, sortOrderIndex - 1, 1, toolTipDisplayValue1, toolTipDisplayValue2, Measure1Value, Measure2Value);                        
-            sortOrderIndex = sortOrderIndex + 2;
+            dataPillar = this.getDataForCategory(totalValueofMeasure, ((allMeasureValues[indexMeasures][0] && allMeasureValues[indexMeasures][0]["numberFormat"]) || dataView.matrix.valueSources[indexMeasures].format), dataView.matrix.valueSources[indexMeasures].displayName, dataView.matrix.valueSources[indexMeasures].displayName, 1, null, indexMeasures * 2, 1, toolTipDisplayValue1, toolTipDisplayValue2, Measure1Value, Measure2Value);
+            dataPillar.sortGroupIndex = indexMeasures * 2;
+            dataPillar.sortWithinGroupIndex = 0;
             visualData.push(dataPillar);
         }
         if (this.ctx.renderSettings.limitBreakdown) {
@@ -262,7 +271,7 @@ export class WaterfallDataBuilder {
             this.sortVisualData(visualData, true);
         } else {
             visualData.sort((a: any, b: any) => {
-                return a.sortOrderIndex - b.sortOrderIndex;
+                return compareBySortKey(a, b);
             });
         }
         // add arrays to the main array for additional x-axis for each category
@@ -362,13 +371,13 @@ export class WaterfallDataBuilder {
                 if (data2.isPillar == 1) {
                     sortOrderIndex = Math.round(sortOrderIndex) + 1
                     data2.sortOrderIndex = sortOrderIndex;
-                    data2.sortOrderIndexforLimitBreakdown = sortOrderIndex;
                     sortOrderIndex = sortOrderIndex + 1
                 } else {
                     sortOrderIndex = sortOrderIndex + + SORT_EPSILON;
                     data2.sortOrderIndex = sortOrderIndex ;
-                    data2.sortOrderIndexforLimitBreakdown = sortOrderIndex;
                 }
+                data2.sortGroupIndex = Math.round(data2.sortOrderIndex);
+                data2.sortWithinGroupIndex = orderIndex;
                 orderIndex++;
                 data2.orderIndex = orderIndex;
                 visualData.push(data2);
@@ -387,10 +396,10 @@ export class WaterfallDataBuilder {
         //var currData = []
         //currData = this.getDataStaticCategoryWaterfall(options);
         currData.sort((a: any, b: any) => {
-            if (Math.round(a.sortOrderIndexforLimitBreakdown) === Math.round(b.sortOrderIndexforLimitBreakdown) && a.isPillar !=1) {
+            if (a.sortGroupIndex === b.sortGroupIndex && a.isPillar != 1) {
                 return parseFloat(Math.abs(b.value).toString()) - parseFloat(Math.abs(a.value).toString());
             } else {
-                return Math.round(a.sortOrderIndexforLimitBreakdown) - Math.round(b.sortOrderIndexforLimitBreakdown);
+                return compareBySortKey(a, b);
             }
         });
         var limit = this.ctx.renderSettings.maxBreakdown;
@@ -406,7 +415,7 @@ export class WaterfallDataBuilder {
                 currData[index]["showbreakdownstep"] = true;
                 limitcounter = 0;
                 if (otherTotalValue != 0) {
-                    newOther.push(this.addOtherBreakdownStep(options, otherTotalValue, othersortOrderIndex, othersortOrderIndex));
+                    newOther.push(this.addOtherBreakdownStep(options, otherTotalValue, othersortOrderIndex));
                 }
                 otherTotalValue = 0
                 othersortOrderIndex = 0;
@@ -416,15 +425,15 @@ export class WaterfallDataBuilder {
                 currData[index]["showbreakdownstep"] = true;
             }
             else if (
-                (index != currData.length - 1 && currData[index].sortOrderIndex == currData[index + 1].sortOrderIndex && limitcounter < limit)
-                || (index != 0 && currData[index].sortOrderIndex == currData[index - 1].sortOrderIndex && limitcounter < limit)
+                (index != currData.length - 1 && currData[index].sortGroupIndex === currData[index + 1].sortGroupIndex && limitcounter < limit)
+                || (index != 0 && currData[index].sortGroupIndex === currData[index - 1].sortGroupIndex && limitcounter < limit)
             ) {
                 limitcounter++;
                 currData[index]["showbreakdownstep"] = true;
             } else {
                 currData[index]["showbreakdownstep"] = false;
                 otherTotalValue = otherTotalValue + currData[index].value;
-                othersortOrderIndex = Math.round(currData[index].sortOrderIndex);
+                othersortOrderIndex = currData[index].sortGroupIndex;
             }
         }
 
@@ -440,20 +449,14 @@ export class WaterfallDataBuilder {
 
         }
         currData.sort((a: any, b: any) => {
-            if (a.sortOrderIndexforLimitBreakdown === b.sortOrderIndexforLimitBreakdown) {
-                //return parseFloat(Math.abs(b.value).toString()) - parseFloat(Math.abs(a.value).toString());
-                //return a.orderIndex - b.orderIndex;
-                return a.sortOrderIndexforLimitBreakdown - b.sortOrderIndexforLimitBreakdown;
-            } else {
-                return a.sortOrderIndexforLimitBreakdown - b.sortOrderIndexforLimitBreakdown;
-            }
+            return compareBySortKey(a, b);
         });
 
         
 
         return currData;
     }
-    private addOtherBreakdownStep(options: VisualUpdateOptions, value: any, sortOrderIndex: any, sortOrderIndexforLimitBreakdown: any) {
+    private addOtherBreakdownStep(options: VisualUpdateOptions, value: any, sortOrderIndex: any) {
         //*******************Add "Other" breakdown item *********************
         const dataView = requireMatrixDataView(options);
         //*******************************************************************
@@ -486,7 +489,8 @@ export class WaterfallDataBuilder {
         data2.toolTipDisplayValue1 = data2.category;
         data2.childrenCount = 1;
         data2.sortOrderIndex = sortOrderIndex + SORT_EPSILON_MAX;
-        data2.sortOrderIndexforLimitBreakdown = sortOrderIndexforLimitBreakdown + SORT_EPSILON_MAX;        
+        data2.sortGroupIndex = sortOrderIndex;
+        data2.sortWithinGroupIndex = Number.MAX_SAFE_INTEGER;
         data2.showbreakdownstep = true;
         return data2;
 
@@ -526,6 +530,8 @@ export class WaterfallDataBuilder {
                 var category: string = dataView.matrix.valueSources[indexMeasures].displayName + allMeasureValues[indexMeasures][nodeItems].category.toString();
                 var selectionId = allMeasureValues[indexMeasures][nodeItems].selectionId;
                 data2Category = this.getDataForCategory(valueDifference, (allMeasureValues[indexMeasures][nodeItems]["numberFormat"] || dataView.matrix.valueSources[indexMeasures].format), displayName, category, 0, selectionId, 1, 1, toolTipDisplayValue1, null, Measure1Value, null);
+                data2Category.sortGroupIndex = 0;
+                data2Category.sortWithinGroupIndex = nodeItems + 1;
                 visualData.push(data2Category);
             }
 
@@ -611,7 +617,8 @@ export class WaterfallDataBuilder {
         data2.toolTipDisplayValue1 = data2.category;
         data2.childrenCount = 1;
         data2.sortOrderIndex = 1;
-        data2.sortOrderIndexforLimitBreakdown = 1;        
+        data2.sortGroupIndex = 0;
+        data2.sortWithinGroupIndex = Number.MAX_SAFE_INTEGER;
         return data2;
     }
     private getDataForCategory(value: number, numberFormat: string, displayName: string, displayID: string, isPillar: number, selectionId: ISelectionId | null, sortOrderIndex: number, childrenCount: number, toolTipDisplayValue1: string, toolTipDisplayValue2: string | null | undefined, Measure1Value: number | null | undefined, Measure2Value: number | null | undefined): BarChartDataPoint {
@@ -624,7 +631,6 @@ export class WaterfallDataBuilder {
         data2.displayName = displayName;
         data2.selectionId = selectionId;
         data2.sortOrderIndex = sortOrderIndex;
-        data2.sortOrderIndexforLimitBreakdown = sortOrderIndex;
         data2.childrenCount = childrenCount;
         data2.Measure1Value = Measure1Value;
         data2.Measure2Value = Measure2Value;

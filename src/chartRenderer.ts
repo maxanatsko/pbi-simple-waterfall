@@ -134,29 +134,30 @@ export class ChartRenderer {
             this.innerWidth = this.innerWidth - crossAxisExtent;
         }
 
+        let findRightHorizontal = 0;
         if (o == "Vertical") {
             this.svgYAxis.attr("width", this.margin.left + this.yAxisWidth);
             this.width = this.width - this.margin.left - this.yAxisWidth - 5;
             this.svg.attr("width", this.width);
             this.svg.attr("transform", `translate(${this.margin.left + this.yAxisWidth},${0})`);
             this.checkBarWidth();
-            this.applyCategoryAxisLayout(this.gScrollable, allData);
-            this.createCrossAxis(this.svgYAxis, this.margin.left + this.yAxisWidth);
-            this.createCrossAxis(this.gScrollable, 0);
+            findRightHorizontal = this.applyCategoryAxisLayout(this.gScrollable, allData);
+            this.createCrossAxis(this.svgYAxis, this.margin.left + this.yAxisWidth, findRightHorizontal);
+            this.createCrossAxis(this.gScrollable, 0, findRightHorizontal);
         } else {
             this.svg.attr("width", this.width);
             this.innerHeight = this.innerHeight - this.yAxisHeightHorizontal;
             this.svg.attr("height", this.innerHeight);
             this.checkBarWidth();
-            this.applyCategoryAxisLayout(this.gScrollable, allData);
+            findRightHorizontal = this.applyCategoryAxisLayout(this.gScrollable, allData);
             this.svgYAxis.attr("width", this.innerWidth + 5);
             this.svgYAxis.attr("height", this.yAxisHeightHorizontal);
-            this.createCrossAxis(this.svgYAxis, 0);
-            this.createCrossAxis(this.gScrollable, this.innerHeight);
+            this.createCrossAxis(this.svgYAxis, 0, findRightHorizontal);
+            this.createCrossAxis(this.gScrollable, this.innerHeight, findRightHorizontal);
         }
 
-        this.createBars(this.gScrollable, this.ctx.barChartData);
-        this.createLabels(this.gScrollable);
+        this.createBars(this.gScrollable, this.ctx.barChartData, findRightHorizontal);
+        this.createLabels(this.gScrollable, findRightHorizontal);
 
         if (o == "Horizontal") {
             this.svg.attr('transform', `translate(${this.margin.left},${this.margin.top})`);
@@ -223,7 +224,7 @@ export class ChartRenderer {
         this.ctx.renderSettings.persistYAxisRange(minValue, maxValue);
     }
 
-    private applyCategoryAxisLayout(gParent: any, allDatatemp: any): void {
+    private applyCategoryAxisLayout(gParent: any, allDatatemp: any): number {
         const result = this.createCategoryAxis(
             gParent,
             allDatatemp,
@@ -235,8 +236,8 @@ export class ChartRenderer {
             this.ctx.scrollbarBreath,
             this.ctx.legendHeight);
         this.innerHeight = result.innerHeight;
-        this.findRightHorizontal = result.findRightHorizontal;
         this.xAxisPosition = result.xAxisPosition;
+        return result.findRightHorizontal;
     }
     private styledAxisGroup(parent: any, settings: { fontSize: number; fontFamily: string; fontColor: string }, axisClass: string) {
         return parent.append('g')
@@ -291,7 +292,7 @@ export class ChartRenderer {
         return extent;
     }
 
-    private createCrossAxis(gParent: any, adjust: any) {
+    private createCrossAxis(gParent: any, adjust: any, findRightHorizontal: number) {
         const o = this.orientation;
         var g = gParent.append('g').attr('class', 'yAxisParentGroup');
 
@@ -329,10 +330,10 @@ export class ChartRenderer {
         }
         var transform = o.name === "Vertical"
             ? `translate(${adjust},${this.margin.top})`
-            : `translate(${-this.findRightHorizontal},${adjust})`;
+            : `translate(${-findRightHorizontal},${adjust})`;
         g.attr('transform', transform);
     }
-    private createLabels(gParent: any) {
+    private createLabels(gParent: any, findRightHorizontal: number) {
         const o = this.orientation;
         var g = gParent.append('g').attr('class', 'myBarLabels');
 
@@ -367,7 +368,7 @@ export class ChartRenderer {
             })
 
         }
-        o.labelFit(g.selectAll(".labels"), o.name === "Vertical" ? 0 : this.width + this.findRightHorizontal - this.ctx.scrollbarBreath);
+        o.labelFit(g.selectAll(".labels"), o.name === "Vertical" ? 0 : this.width + findRightHorizontal - this.ctx.scrollbarBreath);
         this.ctx.tooltipServiceWrapper.addTooltip(g.selectAll('.labels'),
             (dataPoint: any) => buildValueTooltip(dataPoint),
             // no identity-based tooltips here; the util's identity getter is optional
@@ -377,9 +378,9 @@ export class ChartRenderer {
             g.selectAll(".labels")
                 .call(this.labelAlignment, xScale.bandwidth());
         }
-        g.attr('transform', o.scrollableTransform(this.findRightHorizontal, this.margin.top));
+        g.attr('transform', o.scrollableTransform(findRightHorizontal, this.margin.top));
     }
-    private createBars(gParent: any, data: any) {
+    private createBars(gParent: any, data: any, findRightHorizontal: number) {
         const o = this.orientation;
         var g = gParent.append('g').attr('class', 'myBars');
 
@@ -436,7 +437,7 @@ export class ChartRenderer {
             (dataPoint: any) => buildValueTooltip(dataPoint),
             (dataPoint: any) => tooltipSelectionId(dataPoint));
 
-        g.attr('transform', o.scrollableTransform(this.findRightHorizontal, this.margin.top));
+        g.attr('transform', o.scrollableTransform(findRightHorizontal, this.margin.top));
 
     }
     private lineWidth(d: any, i: number) {
@@ -520,7 +521,7 @@ export class ChartRenderer {
         }
         return { min, max };
     }
-    private findRightHorizontal = 0;
+
 
     private checkBarWidth(): void {
         const o = this.orientation;
@@ -684,7 +685,7 @@ export class ChartRenderer {
         }
         var xAxisPosition = this.accumulateAxisEdge(g.selectAll('text'), 0, false);
         let resultInnerHeight = innerHeight;
-        let findRightHorizontal = this.findRightHorizontal;
+        let findRightHorizontal = 0;
         if (o.scrollOrient == "x") {
             g.attr('transform', `translate(${0},${height - xAxisPosition - margin.bottom - scrollbarBreath + legendHeight})`);
             resultInnerHeight = height - margin.top - margin.bottom - xAxisPosition - scrollbarBreath + legendHeight;

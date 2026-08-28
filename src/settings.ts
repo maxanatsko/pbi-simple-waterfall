@@ -105,8 +105,6 @@ export class xAxisFormatting {
 export class yAxisFormatting {
   public show: boolean = true;
   public YAxisDataPointOption: string = "Auto";
-  public YAxisDataPointRangeStart: number = 0;
-  public YAxisDataPointRangeEnd: number = 0;
   public showYAxisValues: boolean = true;
   public fontSize: number = 9;
   public fontColor: string = DEFAULT_GREY;
@@ -150,10 +148,19 @@ export class LabelsFormatting {
 /* ============================================================================
  * Formatting pane model (getFormattingModel)
  * ---------------------------------------------------------------------------
- * Replaces the legacy enumerateObjectInstances / enumerateObjects.ts path.
- * Cards mirror the capabilities.json objects. Conditional visibility and the
- * per-datapoint dynamic slices are applied in applyState(), called from
- * Visual.getFormattingModel() once barChartData / visualType are known.
+ * Cards mirror the capabilities.json objects; groups are pane-only containers
+ * (their `name` is not in capabilities). Every master on/off is promoted to a
+ * card- or group-level `topLevelSlice` so the pane host renders it in the
+ * header and subordinates the body when it is off.
+ *
+ * Rules for "unavailable" controls, applied in applyState():
+ *  1. Master on/off within a card  -> card/group `topLevelSlice`.
+ *  2. Depends on a switch elsewhere -> keep visible, set `disabled` +
+ *     `disabledReason` naming the switch to flip.
+ *  3. Incompatible with the data shape (mode gating) -> `visible = false`.
+ *
+ * applyState() is called from Visual.getFormattingModel() after visualType /
+ * barChartData are known; it also injects the per-datapoint dynamic slices.
  * ==========================================================================*/
 
 // Bare family name so the formatting-pane FontPicker shows a clean "Segoe UI"
@@ -211,7 +218,7 @@ function dropdown(name: string, displayName: string, value: string, items: power
   });
 }
 
-function fontControl(objectName: string, fontSize: number): formattingSettings.FontControl {
+function fontControl(fontSize: number): formattingSettings.FontControl {
   return new formattingSettings.FontControl({
     name: "font",
     displayName: "Font",
@@ -220,7 +227,21 @@ function fontControl(objectName: string, fontSize: number): formattingSettings.F
   });
 }
 
-class ChartOrientationCard extends formattingSettings.SimpleCard {
+function group(
+  name: string,
+  displayName: string,
+  slices: formattingSettings.Slice[],
+  topLevelSlice?: formattingSettings.ToggleSwitch
+): formattingSettings.Group {
+  const g = new formattingSettings.Group({ name, displayName, slices });
+  if (topLevelSlice) {
+    g.topLevelSlice = topLevelSlice;
+  }
+  return g;
+}
+
+// ---- Chart Options -----------------------------------------------------------
+class ChartOrientationCard extends formattingSettings.CompositeCard {
   name = "chartOrientation";
   displayName = "Chart Options";
 
@@ -237,19 +258,29 @@ class ChartOrientationCard extends formattingSettings.SimpleCard {
   limitBreakdown = toggle("limitBreakdown", "Limit Steps", false);
   maxBreakdown = num("maxBreakdown", "Max Steps", 5, 1, 100);
 
-  slices = [this.orientation, this.useSentimentFeatures, this.sortData, this.limitBreakdown, this.maxBreakdown];
+  layoutGroup = group("layout", "Layout", [this.orientation]);
+  stepsGroup = group("steps", "Steps", [this.sortData, this.limitBreakdown, this.maxBreakdown]);
+  sentimentGroup = group("sentiment", "Sentiment formatting", [this.useSentimentFeatures]);
+
+  groups = [this.layoutGroup, this.stepsGroup, this.sentimentGroup];
 }
 
-class DefinePillarsCard extends formattingSettings.SimpleCard {
+// ---- Pillars ---------------------------------------------------------------
+class DefinePillarsCard extends formattingSettings.CompositeCard {
   name = "definePillars";
-  displayName = "Define Pillars";
+  displayName = "Pillars";
 
   Totalpillar = toggle("Totalpillar", "Show Cumulative Total", true);
 
-  slices = [this.Totalpillar];
+  cumulativeGroup = group("cumulative", "Cumulative total", [this.Totalpillar]);
+  // Per-datapoint "pillars" toggles are injected in applyState().
+  perPointGroup = group("perPoint", "Mark step as pillar", []);
+
+  groups = [this.cumulativeGroup, this.perPointGroup];
 }
 
-class SentimentColorCard extends formattingSettings.SimpleCard {
+// ---- Bar Color ----------------------------------------------------------
+class SentimentColorCard extends formattingSettings.CompositeCard {
   name = "sentimentColor";
   displayName = "Bar Color";
 
@@ -258,9 +289,16 @@ class SentimentColorCard extends formattingSettings.SimpleCard {
   sentimentColorAdverse = color("sentimentColorAdverse", "Adverse", "#ff0000");
   sentimentColorOther = color("sentimentColorOther", "Other", "#F2C811");
 
-  slices = [this.sentimentColorTotal, this.sentimentColorFavourable, this.sentimentColorAdverse, this.sentimentColorOther];
+  bySentimentGroup = group("bySentiment", "By sentiment", [
+    this.sentimentColorTotal, this.sentimentColorFavourable, this.sentimentColorAdverse, this.sentimentColorOther,
+  ]);
+  // Per-datapoint "fill" pickers are injected in applyState().
+  byPointGroup = group("byPoint", "By data point", []);
+
+  groups = [this.bySentimentGroup, this.byPointGroup];
 }
 
+// ---- Margins (flat: four equal peers) --------------------------------------
 class MarginsCard extends formattingSettings.SimpleCard {
   name = "margins";
   displayName = "Margins";
@@ -273,76 +311,96 @@ class MarginsCard extends formattingSettings.SimpleCard {
   slices = [this.topMargin, this.bottomMargin, this.leftMargin, this.rightMargin];
 }
 
-class LegendCard extends formattingSettings.SimpleCard {
+// ---- Legend --------------------------------------------------------------
+class LegendCard extends formattingSettings.CompositeCard {
   name = "Legend";
   displayName = "Legend";
 
-  show = toggle("show", "Legend Show / Hide", false);
+  show = toggle("show", "Legend", false);
   textFavourable = text("textFavourable", "Sentiment - Favourable", "Favourable");
   textAdverse = text("textAdverse", "Sentiment - Adverse", "Adverse");
-  font = fontControl("Legend", 9);
+  font = fontControl(9);
   fontColor = color("fontColor", "Font Color", DEFAULT_GREY);
 
-  slices = [this.show, this.textFavourable, this.textAdverse, this.font, this.fontColor];
+  topLevelSlice = this.show;
+
+  textGroup = group("text", "Text", [this.textFavourable, this.textAdverse]);
+  fontGroup = group("font", "Font", [this.font, this.fontColor]);
+
+  groups = [this.textGroup, this.fontGroup];
 }
 
-class XAxisCard extends formattingSettings.SimpleCard {
+// ---- X-Axis -----------------------------------------------------------
+class XAxisCard extends formattingSettings.CompositeCard {
   name = "xAxisFormatting";
   displayName = "X-Axis";
 
-  show = toggle("show", "X-Axis Show/Hide", true);
-  font = fontControl("xAxisFormatting", 9);
+  show = toggle("show", "X-Axis", true);
+  font = fontControl(9);
   fontColor = color("fontColor", "Font Color", DEFAULT_GREY);
-  fitToWidth = toggle("fitToWidth", "Fit to width", true);
   labelWrapText = toggle("labelWrapText", "Wrap text", true);
-  barWidth = num("barWidth", "Minimum Bar Width", 50, 10, 100);
   padding = num("padding", "Padding", 5, 0, 20);
-  showGridLine = toggle("showGridLine", "Show / Hide Gridlines", true);
+  fitToWidth = toggle("fitToWidth", "Fit to width", true);
+  barWidth = num("barWidth", "Minimum Bar Width", 50, 10, 100);
+  showGridLine = toggle("showGridLine", "Gridlines", true);
   gridLineStrokeWidth = num("gridLineStrokeWidth", "Stroke Width", 5, 1, 50);
   gridLineColor = color("gridLineColor", "Gridlines Color", DEFAULT_GREY);
 
-  slices = [this.show, this.font, this.fontColor, this.fitToWidth, this.labelWrapText, this.barWidth,
-    this.padding, this.showGridLine, this.gridLineStrokeWidth, this.gridLineColor];
+  topLevelSlice = this.show;
+
+  labelsGroup = group("labels", "Labels", [this.font, this.fontColor, this.labelWrapText, this.padding]);
+  layoutGroup = group("layout", "Layout", [this.fitToWidth, this.barWidth]);
+  gridlinesGroup = group("gridlines", "Gridlines", [this.gridLineStrokeWidth, this.gridLineColor], this.showGridLine);
+
+  groups = [this.labelsGroup, this.layoutGroup, this.gridlinesGroup];
 }
 
-class YAxisCard extends formattingSettings.SimpleCard {
+// ---- Y-Axis -----------------------------------------------------------
+class YAxisCard extends formattingSettings.CompositeCard {
   name = "yAxisFormatting";
   displayName = "Y-Axis";
 
-  show = toggle("show", "Y-Axis Show/Hide", true);
+  show = toggle("show", "Y-Axis", true);
+  showYAxisValues = toggle("showYAxisValues", "Values", true);
+  font = fontControl(9);
+  fontColor = color("fontColor", "Font Color", DEFAULT_GREY);
+  YAxisValueFormatOption = dropdown("YAxisValueFormatOption", "Display Units", "Auto", VALUE_FORMAT_ITEMS);
+  decimalPlaces = num("decimalPlaces", "Value decimal places", 0, 0, 15);
   YAxisDataPointOption = dropdown("YAxisDataPointOption", "Starting Point", "Auto", [
     { value: "Auto", displayName: "Auto" },
     { value: "Zero", displayName: "Zero" },
   ]);
-  showYAxisValues = toggle("showYAxisValues", "Show / Hide Values", true);
-  font = fontControl("yAxisFormatting", 9);
-  fontColor = color("fontColor", "Font Color", DEFAULT_GREY);
-  YAxisValueFormatOption = dropdown("YAxisValueFormatOption", "Display Units", "Auto", VALUE_FORMAT_ITEMS);
-  decimalPlaces = num("decimalPlaces", "Value decimal places", 0, 0, 15);
-  showGridLine = toggle("showGridLine", "Show / Hide Gridlines", true);
+  showGridLine = toggle("showGridLine", "Gridlines", true);
   gridLineStrokeWidth = num("gridLineStrokeWidth", "Stroke Width", 1, 1, 50);
   gridLineColor = color("gridLineColor", "Gridlines Color", DEFAULT_GREY);
-  showZeroAxisGridLine = toggle("showZeroAxisGridLine", "Show Zero Line", false);
-  zeroLineStrokeWidth = num("zeroLineStrokeWidth", "Zero Line Width", 1, 1, 50);
-  zeroLineColor = color("zeroLineColor", "Zero Line Color", DEFAULT_GREY);
-  joinBars = toggle("joinBars", "Join Bars", false);
-  joinBarsStrokeWidth = num("joinBarsStrokeWidth", "Join Bar - Stroke Width", 1, 1, 50);
-  joinBarsColor = color("joinBarsColor", "Join Bar - Color", DEFAULT_GREY);
+  showZeroAxisGridLine = toggle("showZeroAxisGridLine", "Zero line", false);
+  zeroLineStrokeWidth = num("zeroLineStrokeWidth", "Stroke Width", 1, 1, 50);
+  zeroLineColor = color("zeroLineColor", "Color", DEFAULT_GREY);
+  joinBars = toggle("joinBars", "Connectors", false);
+  joinBarsStrokeWidth = num("joinBarsStrokeWidth", "Stroke Width", 1, 1, 50);
+  joinBarsColor = color("joinBarsColor", "Color", DEFAULT_GREY);
 
-  slices = [this.show, this.YAxisDataPointOption, this.showYAxisValues, this.font, this.fontColor,
-    this.YAxisValueFormatOption, this.decimalPlaces, this.showGridLine, this.gridLineStrokeWidth,
-    this.gridLineColor, this.showZeroAxisGridLine, this.zeroLineStrokeWidth, this.zeroLineColor,
-    this.joinBars, this.joinBarsStrokeWidth, this.joinBarsColor];
+  topLevelSlice = this.show;
+
+  valuesGroup = group("values", "Values",
+    [this.font, this.fontColor, this.YAxisValueFormatOption, this.decimalPlaces], this.showYAxisValues);
+  scaleGroup = group("scale", "Scale", [this.YAxisDataPointOption]);
+  gridlinesGroup = group("gridlines", "Gridlines", [this.gridLineStrokeWidth, this.gridLineColor], this.showGridLine);
+  zeroLineGroup = group("zeroLine", "Zero line", [this.zeroLineStrokeWidth, this.zeroLineColor], this.showZeroAxisGridLine);
+  connectorsGroup = group("connectors", "Connectors", [this.joinBarsStrokeWidth, this.joinBarsColor], this.joinBars);
+
+  groups = [this.valuesGroup, this.scaleGroup, this.gridlinesGroup, this.zeroLineGroup, this.connectorsGroup];
 }
 
-class LabelsCard extends formattingSettings.SimpleCard {
+// ---- Labels ------------------------------------------------------------
+class LabelsCard extends formattingSettings.CompositeCard {
   name = "LabelsFormatting";
   displayName = "Labels";
 
   show = toggle("show", "Show Labels", true);
   topLevelSlice = this.show;
 
-  font = fontControl("LabelsFormatting", 9);
+  font = fontControl(9);
   useDefaultFontColor = toggle("useDefaultFontColor", "Use Default Font Color", true);
   fontColor = color("fontColor", "Default Font Color", DEFAULT_GREY);
   sentimentFontColorTotal = color("sentimentFontColorTotal", "Total", DEFAULT_GREY);
@@ -359,10 +417,14 @@ class LabelsCard extends formattingSettings.SimpleCard {
   decimalPlaces = num("decimalPlaces", "Value decimal places", 0, 0, 15);
   HideZeroBlankValues = toggle("HideZeroBlankValues", "Hide Zero / Blank values", false);
 
-  slices = [this.font, this.useDefaultFontColor, this.fontColor, this.sentimentFontColorTotal,
-    this.sentimentFontColorFavourable, this.sentimentFontColorAdverse, this.sentimentFontColorOther,
-    this.useDefaultLabelPositioning, this.labelPosition, this.labelPositionTotal, this.labelPositionFavourable,
-    this.labelPositionAdverse, this.labelPositionOther, this.valueFormat, this.decimalPlaces, this.HideZeroBlankValues];
+  fontGroup = group("font", "Font", [this.font]);
+  // color / position group slices are rebuilt in applyState().
+  colorGroup = group("color", "Color", [this.useDefaultFontColor, this.fontColor]);
+  positionGroup = group("position", "Position", [this.useDefaultLabelPositioning, this.labelPosition]);
+  valueFormatGroup = group("valueFormat", "Value format", [this.valueFormat, this.decimalPlaces]);
+  optionsGroup = group("options", "Options", [this.HideZeroBlankValues]);
+
+  groups = [this.fontGroup, this.colorGroup, this.positionGroup, this.valueFormatGroup, this.optionsGroup];
 }
 
 function fillSlice(displayName: string, value: string, selectionId: powerbi.visuals.ISelectionId): formattingSettings.ColorPicker {
@@ -386,148 +448,176 @@ export class VisualFormattingSettingsModel extends formattingSettings.Model {
 
   cards = [
     this.chartOrientation,
-    this.definePillars,
     this.sentimentColor,
-    this.margins,
     this.Legend,
+    this.definePillars,
     this.xAxisFormatting,
     this.yAxisFormatting,
     this.LabelsFormatting,
+    this.margins,
   ];
 
   /**
-   * Apply the conditional visibility and per-datapoint dynamic slices that the
-   * legacy enumerateObjects.ts produced. Called from Visual.getFormattingModel()
-   * after visualType / barChartData are known.
+   * Apply conditional visibility, cross-setting `disabled` reasons, and the
+   * per-datapoint dynamic slices. Called from Visual.getFormattingModel() after
+   * visualType / barChartData are known. The model is rebuilt from defaults on
+   * every call (populateFormattingSettingsModel news it up), so each branch sets
+   * its state explicitly rather than relying on a reset.
    */
   public applyState(
     visualType: VisualMode,
     settings: VisualSettings,
     barChartData: BarChartDataPoint[],
-    dataView: DataView,
-    defaultXAxisGridlineStrokeWidth: number,
-    defaultYAxisGridlineStrokeWidth: number
+    dataView: DataView
   ): void {
     const isStatic = visualType.isStatic;
     const isStaticCategory = visualType.isStaticCategory;
     const isStaticLike = visualType.isStaticLike;
+    const isDrillableCategory = visualType.isDrillableCategory;
     const singleLevel = dataView?.matrix?.rows?.levels?.length === 1;
     const useSentiment = settings.chartOrientation.useSentimentFeatures;
     const data = (barChartData ?? []).filter(d => d && d.category !== "defaultBreakdownStepOther");
 
-    // ---- chartOrientation -------------------------------------------------
+    // ---- Chart Options -------------------------------------------------
     const co = this.chartOrientation;
-    co.useSentimentFeatures.visible = isStaticLike;
     co.sortData.visible = isStaticLike || singleLevel;
     co.limitBreakdown.visible = isStaticCategory || (!isStaticLike && singleLevel);
-    co.maxBreakdown.visible = co.limitBreakdown.visible && settings.chartOrientation.limitBreakdown;
+    co.maxBreakdown.visible = co.limitBreakdown.visible;
+    co.maxBreakdown.disabled = !settings.chartOrientation.limitBreakdown;
+    co.maxBreakdown.disabledReason = "Turn on Limit Steps to set a maximum.";
+    co.useSentimentFeatures.visible = isStaticLike;
+    co.stepsGroup.visible = co.sortData.visible || co.limitBreakdown.visible;
+    co.sentimentGroup.visible = co.useSentimentFeatures.visible;
 
-    // ---- definePillars --------------------------------------------------
+    // ---- Pillars -----------------------------------------------------
     const dp = this.definePillars;
-    dp.visible = isStaticLike || visualType.isDrillableCategory;
-    dp.slices = [];
+    dp.visible = isStaticLike || isDrillableCategory;
+    dp.perPointGroup.slices = [];
+    dp.perPointGroup.disabled = false;
     if (isStatic) {
+      dp.cumulativeGroup.visible = false;
+      dp.perPointGroup.visible = data.length > 0;
       for (const d of data) {
-        dp.slices.push(this.perDatapointToggle("pillars", d.category, !!d.isPillar, d.selectionId!));
+        dp.perPointGroup.slices.push(this.perDatapointToggle("pillars", d.category, !!d.isPillar, d.selectionId!));
       }
     } else if (isStaticCategory) {
-      if (!settings.definePillars.Totalpillar) {
-        for (const d of data) {
-          dp.slices.push(this.perDatapointToggle("pillars", d.category, !!d.isPillar, d.selectionId!));
-        }
+      dp.cumulativeGroup.visible = true;
+      dp.perPointGroup.visible = data.length > 0;
+      dp.perPointGroup.disabled = settings.definePillars.Totalpillar;
+      dp.perPointGroup.disabledReason = "Turn off Show Cumulative Total to mark individual steps as pillars.";
+      for (const d of data) {
+        dp.perPointGroup.slices.push(this.perDatapointToggle("pillars", d.category, !!d.isPillar, d.selectionId!));
       }
-      dp.slices.push(dp.Totalpillar);
-    } else if (visualType.isDrillableCategory) {
-      dp.slices.push(dp.Totalpillar);
+    } else if (isDrillableCategory) {
+      dp.cumulativeGroup.visible = true;
+      dp.perPointGroup.visible = false;
     }
 
-    // ---- sentimentColor ("Bar Color") ---------------------------------
+    // ---- Bar Color -------------------------------------------------
     const sc = this.sentimentColor;
-    sc.slices = [];
-    if (isStaticLike && !useSentiment) {
+    const individualColors = isStaticLike && !useSentiment;
+    sc.byPointGroup.slices = [];
+    if (individualColors) {
+      // The per-bar pickers fully replace the sentiment swatches; the aggregated
+      // "Other" bar reuses the shared sentimentColorOther picker, so the two
+      // groups can't both be shown without duplicating that control.
+      sc.bySentimentGroup.visible = false;
+      sc.byPointGroup.visible = true;
       for (const row of barChartData ?? []) {
         if (row.category !== "defaultBreakdownStepOther") {
-          sc.slices.push(fillSlice(row.category, row.customBarColor, row.selectionId!));
+          sc.byPointGroup.slices.push(fillSlice(row.category, row.customBarColor, row.selectionId!));
         } else {
-          sc.slices.push(sc.sentimentColorOther);
+          sc.byPointGroup.slices.push(sc.sentimentColorOther);
         }
       }
     } else {
-      sc.slices = [sc.sentimentColorTotal, sc.sentimentColorFavourable, sc.sentimentColorAdverse, sc.sentimentColorOther];
+      sc.bySentimentGroup.visible = true;
+      sc.byPointGroup.visible = false;
     }
 
     // ---- Legend --------------------------------------------------------
-    this.Legend.visible = useSentiment;
+    const lg = this.Legend;
+    if (useSentiment) {
+      lg.visible = true;
+      lg.disabled = false;
+    } else if (isStaticLike) {
+      lg.visible = true;
+      lg.disabled = true;
+      lg.disabledReason = "Turn on Format using Sentiments (Chart Options) to use the legend.";
+    } else {
+      lg.visible = false;
+    }
 
-    // ---- xAxisFormatting ---------------------------------------------
+    // ---- X-Axis ----------------------------------------------------
+    // The group `topLevelSlice`s render the header toggles; the explicit
+    // `.visible` gating below keeps the dependent slices hidden (not just
+    // greyed) when a toggle is off, matching the established behaviour.
     const xa = this.xAxisFormatting;
-    const xShow = settings.xAxisFormatting.show;
-    // Hiding the x-axis drops its labels and cell separators, so hide their options too.
-    xa.font.visible = xShow;
-    xa.fontColor.visible = xShow;
-    xa.labelWrapText.visible = xShow;
-    xa.padding.visible = xShow;
-    xa.showGridLine.visible = xShow;
     xa.barWidth.visible = !settings.xAxisFormatting.fitToWidth;
-    xa.gridLineStrokeWidth.visible = xShow && settings.xAxisFormatting.showGridLine;
-    xa.gridLineColor.visible = xShow && settings.xAxisFormatting.showGridLine;
-    xa.gridLineStrokeWidth.value = defaultXAxisGridlineStrokeWidth as number;
+    const xGrid = settings.xAxisFormatting.showGridLine;
+    xa.gridLineStrokeWidth.visible = xGrid;
+    xa.gridLineColor.visible = xGrid;
 
-    // ---- yAxisFormatting ---------------------------------------------
+    // ---- Y-Axis ----------------------------------------------------
     const ya = this.yAxisFormatting;
-    const showValues = settings.yAxisFormatting.showYAxisValues;
-    ya.font.visible = showValues;
-    ya.fontColor.visible = showValues;
-    ya.YAxisValueFormatOption.visible = showValues;
-    ya.decimalPlaces.visible = showValues;
-    ya.gridLineStrokeWidth.visible = settings.yAxisFormatting.showGridLine;
-    ya.gridLineColor.visible = settings.yAxisFormatting.showGridLine;
-    ya.gridLineStrokeWidth.value = defaultYAxisGridlineStrokeWidth as number;
-    ya.zeroLineStrokeWidth.visible = settings.yAxisFormatting.showZeroAxisGridLine;
-    ya.zeroLineColor.visible = settings.yAxisFormatting.showZeroAxisGridLine;
+    const yValues = settings.yAxisFormatting.showYAxisValues;
+    ya.font.visible = yValues;
+    ya.fontColor.visible = yValues;
+    ya.YAxisValueFormatOption.visible = yValues;
+    ya.decimalPlaces.visible = yValues;
+    ya.decimalPlaces.disabled = settings.yAxisFormatting.YAxisValueFormatOption === "None";
+    ya.decimalPlaces.disabledReason = "Choose a Display Units format other than None.";
+    const yGrid = settings.yAxisFormatting.showGridLine;
+    ya.gridLineStrokeWidth.visible = yGrid;
+    ya.gridLineColor.visible = yGrid;
+    const yZero = settings.yAxisFormatting.showZeroAxisGridLine;
+    ya.zeroLineStrokeWidth.visible = yZero;
+    ya.zeroLineColor.visible = yZero;
     ya.joinBarsStrokeWidth.visible = settings.yAxisFormatting.joinBars;
     ya.joinBarsColor.visible = settings.yAxisFormatting.joinBars;
 
-    // ---- LabelsFormatting ------------------------------------------
+    // ---- Labels --------------------------------------------------
     const lf = this.LabelsFormatting;
     const useDefaultColor = settings.LabelsFormatting.useDefaultFontColor;
     const useDefaultPos = settings.LabelsFormatting.useDefaultLabelPositioning;
     const sentimentBranch = useSentiment || !isStaticLike;
 
-    lf.slices = [lf.font, lf.useDefaultFontColor];
-
-    // font colour block
+    // colour block
+    lf.colorGroup.slices = [lf.useDefaultFontColor];
     if (useDefaultColor) {
-      lf.slices.push(lf.fontColor);
+      lf.colorGroup.slices.push(lf.fontColor);
     } else if (sentimentBranch) {
-      lf.slices.push(lf.sentimentFontColorTotal, lf.sentimentFontColorFavourable, lf.sentimentFontColorAdverse, lf.sentimentFontColorOther);
+      lf.colorGroup.slices.push(
+        lf.sentimentFontColorTotal, lf.sentimentFontColorFavourable, lf.sentimentFontColorAdverse, lf.sentimentFontColorOther);
     } else {
       for (const row of barChartData ?? []) {
         if (row.category !== "defaultBreakdownStepOther") {
-          lf.slices.push(fillSlice(row.category, row.customFontColor, row.selectionId!));
+          lf.colorGroup.slices.push(fillSlice(row.category, row.customFontColor, row.selectionId!));
         } else {
-          lf.slices.push(lf.sentimentFontColorOther);
+          lf.colorGroup.slices.push(lf.sentimentFontColorOther);
         }
       }
     }
 
-    // label positioning block
-    lf.slices.push(lf.useDefaultLabelPositioning);
+    // positioning block
+    lf.positionGroup.slices = [lf.useDefaultLabelPositioning];
     if (useDefaultPos) {
-      lf.slices.push(lf.labelPosition);
+      lf.positionGroup.slices.push(lf.labelPosition);
     } else if (sentimentBranch) {
-      lf.slices.push(lf.labelPositionTotal, lf.labelPositionFavourable, lf.labelPositionAdverse, lf.labelPositionOther);
+      lf.positionGroup.slices.push(
+        lf.labelPositionTotal, lf.labelPositionFavourable, lf.labelPositionAdverse, lf.labelPositionOther);
     } else {
       for (const row of barChartData ?? []) {
         if (row.category !== "defaultBreakdownStepOther") {
-          lf.slices.push(this.perDatapointDropdown("labelPosition", row.category, row.customLabelPositioning, row.selectionId!));
+          lf.positionGroup.slices.push(this.perDatapointDropdown("labelPosition", row.category, row.customLabelPositioning, row.selectionId!));
         } else {
-          lf.slices.push(lf.labelPositionOther);
+          lf.positionGroup.slices.push(lf.labelPositionOther);
         }
       }
     }
 
-    lf.slices.push(lf.valueFormat, lf.decimalPlaces, lf.HideZeroBlankValues);
+    lf.decimalPlaces.disabled = settings.LabelsFormatting.valueFormat === "None";
+    lf.decimalPlaces.disabledReason = "Choose a Display Units format other than None.";
   }
 
   private perDatapointToggle(name: string, displayName: string, value: boolean, selectionId: powerbi.visuals.ISelectionId): formattingSettings.ToggleSwitch {

@@ -505,7 +505,6 @@ export class ChartRenderer {
         }
         return { min, max };
     }
-    private findBottom = 0;
     private findRightHorizontal = 0;
 
     private checkBarWidth(): void {
@@ -650,36 +649,25 @@ export class ChartRenderer {
                     .domain(currData.map((displayName, index) => index + displayName))
                     .range(xAxisrange);
             }
-            this[o.edgeField] = 0;
+            let edge = 0;
             var myWidth = currChildCount + myBandwidth;
             if (allDataIndex != (levels - 1)) {
                 if (dataView.matrix.valueSources.length == 1) {
                     var myxAxisParent;
-                    this.createAxis(myxAxisParent, g, false, myWidth, 0, xScale, xBaseScale, currData, allDataIndex, levels, xAxisrange, myAxisParentHeight);
+                    edge = this.createAxis(myxAxisParent, g, false, myWidth, 0, xScale, xBaseScale, currData, allDataIndex, levels, xAxisrange, myAxisParentHeight, edge);
                 } else {
                     for (let index = 1; index < dataView.matrix.valueSources.length; index++) {
                         var myxAxisParent;
-                        this.createAxis(myxAxisParent, g, false, myWidth, index, xScale, xBaseScale, currData, allDataIndex, levels, xAxisrange, myAxisParentHeight);
+                        edge = this.createAxis(myxAxisParent, g, false, myWidth, index, xScale, xBaseScale, currData, allDataIndex, levels, xAxisrange, myAxisParentHeight, edge);
                     }
                 }
             } else {
                 var myxAxisParent;
-                this.createAxis(myxAxisParent, g, true, myWidth, 1, xScale, xBaseScale, currData, allDataIndex, levels, xAxisrange, myAxisParentHeight);
+                edge = this.createAxis(myxAxisParent, g, true, myWidth, 1, xScale, xBaseScale, currData, allDataIndex, levels, xAxisrange, myAxisParentHeight, edge);
             }
-            myAxisParentHeight = this[o.edgeField];
+            myAxisParentHeight = edge;
         }
-        var xAxisPosition = 0;
-        g.selectAll('text').each((d: any, i: number, nodes: any) => {
-            if (o.scrollOrient == "x") {
-                if (xAxisPosition <= nodes[i].getBoundingClientRect().bottom) {
-                    xAxisPosition = nodes[i].getBoundingClientRect().bottom;
-                }
-            } else {
-                if (xAxisPosition >= nodes[i].getBoundingClientRect().left) {
-                    xAxisPosition = nodes[i].getBoundingClientRect().left;
-                }
-            }
-        });
+        var xAxisPosition = this.accumulateAxisEdge(g.selectAll('text'), 0, false);
         let resultInnerHeight = innerHeight;
         let findRightHorizontal = this.findRightHorizontal;
         if (o.scrollOrient == "x") {
@@ -692,7 +680,30 @@ export class ChartRenderer {
         return { innerHeight: resultInnerHeight, findRightHorizontal, xAxisPosition };
     }
 
-    private createAxis(myxAxisParent: any, g: any, baseAxis: boolean, myWidth: any, index: number, xScale: any, xBaseScale: any, currData: any, allDataIndex: any, levels: any, xAxisrange: any, myAxisParentHeight: any) {
+    /** Reduce a set of axis label nodes to the outer category-axis edge.
+     *  Vertical (scrollOrient "x"): max bounding-box bottom, optionally subtracting
+     *  the legend height. Horizontal: min bounding-box left. `running` seeds the
+     *  accumulator so callers can fold across multiple axis groups. */
+    private accumulateAxisEdge(selection: any, running: number, subtractLegend: boolean): number {
+        const o = this.orientation;
+        let edge = running;
+        selection.each((d: any, i: number, nodes: any) => {
+            if (o.scrollOrient == "x") {
+                const bottom = nodes[i].getBoundingClientRect().bottom - (subtractLegend ? this.ctx.legendHeight : 0);
+                if (edge <= bottom) {
+                    edge = bottom;
+                }
+            } else {
+                const left = nodes[i].getBoundingClientRect().left;
+                if (edge >= left) {
+                    edge = left;
+                }
+            }
+        });
+        return edge;
+    }
+
+    private createAxis(myxAxisParent: any, g: any, baseAxis: boolean, myWidth: any, index: number, xScale: any, xBaseScale: any, currData: any, allDataIndex: any, levels: any, xAxisrange: any, myAxisParentHeight: any, currentEdge: number): number {
         const o = this.orientation;
         var myxAxisParentx = o.mainAxis(xScale);
         myxAxisParent = this.styledAxisGroup(g, this.ctx.settings.xAxisFormatting, 'myXaxis')
@@ -726,17 +737,7 @@ export class ChartRenderer {
             }
             xAxislabels.attr('transform', o.baseTickLabelTransform(this.ctx.settings.xAxisFormatting.padding));
         }
-        myxAxisParent.selectAll("text").each((d: any, i: number, nodes: any) => {
-            if (o.scrollOrient == "x") {
-                if (this[o.edgeField] <= nodes[i].getBoundingClientRect().bottom) {
-                    this[o.edgeField] = nodes[i].getBoundingClientRect().bottom - this.ctx.legendHeight;
-                }
-            } else {
-                if (this[o.edgeField] >= nodes[i].getBoundingClientRect().left) {
-                    this[o.edgeField] = nodes[i].getBoundingClientRect().left;
-                }
-            }
-        });
+        let edge = this.accumulateAxisEdge(myxAxisParent.selectAll("text"), currentEdge, true);
         if (o.name === "Horizontal") {
             var maxtextWidth = 0;
             myxAxisParent.selectAll("text").each(function (this: SVGTextContentElement) {
@@ -748,10 +749,11 @@ export class ChartRenderer {
             });
             myxAxisParent.selectAll("tspan").call(this.xAxislabelAlignmentHorizontal, maxtextWidth);
         }
-        this.createAxisGridlines(myxAxisParent, currData, allDataIndex, levels, xScale, xAxisrange);
+        this.createAxisGridlines(myxAxisParent, currData, allDataIndex, levels, xScale, xAxisrange, edge);
+        return edge;
     }
 
-    private createAxisGridlines(myxAxisParent: any, currData: any, allDataIndex: any, levels: any, xScale: any, xAxisrange: any) {
+    private createAxisGridlines(myxAxisParent: any, currData: any, allDataIndex: any, levels: any, xScale: any, xAxisrange: any, edge: number) {
         const o = this.orientation;
         if (this.ctx.settings.xAxisFormatting.showGridLine) {
             this.applyGridlineStyle(myxAxisParent.selectAll('path'), this.ctx.settings.xAxisFormatting.gridLineColor, gridlineStrokeWidth(this.ctx.settings, "x") / o.xGridlineStrokeDivisor + "pt");
@@ -759,7 +761,7 @@ export class ChartRenderer {
             const catPos = (d: any, i: number) => allDataIndex == (levels - 1)
                 ? xScale(d.category) - (xScale.padding() * xScale.step()) / 2
                 : xAxisrange[i];
-            const ext = this[o.edgeField] - myAxisTop;
+            const ext = edge - myAxisTop;
             myxAxisParent.selectAll(".text").data(currData).enter().append("line")
                 .attr("x1", (d: any, i: number) => o.gridlineAttrs(catPos(d, i), ext).x1)
                 .attr("y1", (d: any, i: number) => o.gridlineAttrs(catPos(d, i), ext).y1)

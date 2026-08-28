@@ -20,8 +20,6 @@ export class Orientation {
      *  Vertical: decreasing (value up = pixel up). Horizontal: increasing (value right = pixel right). */
     public readonly cross: d3.ScaleLinear<number, number>;
 
-    /** Field on the Visual that accumulates the category-axis outer edge while drawing levels. */
-    public readonly edgeField: "findBottom" | "findRightHorizontal";
     /** Field on the Visual that holds the measured cross-axis extent (width for vertical, height for horizontal). */
     public readonly crossAxisExtentField: "yAxisWidth" | "yAxisHeightHorizontal";
 
@@ -39,11 +37,9 @@ export class Orientation {
 
         if (name === "Vertical") {
             this.cross = d3.scaleLinear().domain([geo.minValue, geo.maxValue]).range([geo.innerHeight, 0]);
-            this.edgeField = "findBottom";
             this.crossAxisExtentField = "yAxisWidth";
         } else {
             this.cross = d3.scaleLinear().domain([geo.minValue, geo.maxValue]).range([0, geo.innerWidth + geo.xAxisPosition - geo.scrollbarBreath]);
-            this.edgeField = "findRightHorizontal";
             this.crossAxisExtentField = "yAxisHeightHorizontal";
         }
     }

@@ -12,6 +12,11 @@ type Selection = d3.Selection<any, any, any, any>;
 export class BarInteractions {
     private allowInteractions = false;
     private isHighContrast = false;
+    /** The bar series for the current render. `ChartRenderer` is rebuilt every
+     *  `Visual.update()`, so click / background / host-selection callbacks that
+     *  outlive a render must read the bars from here — this object is the one
+     *  that survives — rather than closing over a discarded renderer. */
+    private bars: Selection | null = null;
 
     constructor(private readonly deps: {
         selectionManager: ISelectionManager;
@@ -21,6 +26,12 @@ export class BarInteractions {
     public configure(state: { allowInteractions: boolean; isHighContrast: boolean }): void {
         this.allowInteractions = state.allowInteractions;
         this.isHighContrast = state.isHighContrast;
+    }
+
+    /** Point the interaction object at the freshly drawn bar series. Must be
+     *  called once per render, before wiring the click handlers. */
+    public bindBars(bars: Selection): void {
+        this.bars = bars;
     }
 
     private get hcForeground(): string {
@@ -44,20 +55,20 @@ export class BarInteractions {
         });
     }
 
-    /** Click-to-select on a d3 selection (bars or axis labels); `getBars`
-     *  yields the bar series whose opacity reflects selection. */
-    public wireClick(selection: Selection, getBars: () => Selection): void {
+    /** Click-to-select on a d3 selection (bars or axis labels); opacity is
+     *  applied to the bar series last bound via `bindBars`. */
+    public wireClick(selection: Selection): void {
         selection.on('click', (event: MouseEvent, d: any) => {
             // Allow selection only if the visual is rendered in a view that supports interactivity (e.g. Report)
             if (this.allowInteractions) {
                 const isCtrlPressed: boolean = event.ctrlKey;
                 if (this.deps.selectionManager.hasSelection() && !isCtrlPressed) {
-                    getBars().attr('fill-opacity', 1);
+                    this.bars?.attr('fill-opacity', 1);
                 }
                 this.deps.selectionManager
                     .select(d.selectionId, isCtrlPressed)
                     .then((ids: ISelectionIdBase[]) => {
-                        this.syncSelectionState(getBars(), ids);
+                        this.syncSelectionState(this.bars, ids);
                     });
                 event.stopPropagation();
             }
@@ -65,7 +76,7 @@ export class BarInteractions {
     }
 
     /** Clear selection when clicking the plot background. */
-    public wireRootClear(svg: Selection, getBars: () => Selection): void {
+    public wireRootClear(svg: Selection): void {
         svg.on('click', () => {
             if (this.allowInteractions) {
                 this.deps.selectionManager
@@ -73,11 +84,11 @@ export class BarInteractions {
                     .then(() => {
                         this.deps.selectionManager.registerOnSelectCallback(
                             (ids: ISelectionIdBase[]) => {
-                                this.syncSelectionState(getBars(), ids);
+                                this.syncSelectionState(this.bars, ids);
                             });
                     });
             }
-            getBars().attr('fill-opacity', 1);
+            this.bars?.attr('fill-opacity', 1);
         });
     }
 

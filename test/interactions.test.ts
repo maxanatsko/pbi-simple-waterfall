@@ -88,4 +88,32 @@ describe("bar accessibility + selection", () => {
         expect(opacities.some(o => o === "1")).toBe(true);
         expect(opacities.some(o => o === "0.5")).toBe(true);
     });
+
+    // Regression: a background click registers selectionManager.registerOnSelectCallback.
+    // The next Visual.update() discards the SVG and its ChartRenderer, so that callback
+    // must sync the freshly drawn bars, not the detached ones from the retired renderer.
+    it("host selection changes after a re-render sync the current bars", async () => {
+        const builder = new VisualBuilder();
+        builder.init();
+        builder.update(buildDataView());
+
+        const firstSvg = bars(builder.element)[0].closest("svg") as SVGElement;
+        firstSvg.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        await new Promise(r => setTimeout(r, 0));
+
+        // Rebuild — new ChartRenderer, new bar series.
+        builder.update(buildDataView());
+        const rects = bars(builder.element);
+        expect(rects.length).toBeGreaterThan(1);
+        expect(rects.every(r => r.getAttribute("fill-opacity") == null)).toBe(true);
+
+        // Host-driven selection change (e.g. from another visual) fires the stored callback.
+        const target = (rects[1] as any).__data__.selectionId;
+        const selectionManager = builder.visualHost.createSelectionManager() as any;
+        selectionManager.simutateSelection([target]);
+
+        const opacities = rects.map(r => r.getAttribute("fill-opacity"));
+        expect(opacities[1]).toBe("1");
+        expect(opacities.filter(o => o === "0.5").length).toBe(rects.length - 1);
+    });
 });

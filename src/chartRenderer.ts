@@ -336,6 +336,7 @@ export class ChartRenderer {
             .attr(o.mainSizeAttr, xScale.bandwidth())
             .attr(o.crossSizeAttr, (d: any, i: number) => o.barCrossSize(d, i, this.ctx.barChartData))
             .attr('fill', (d: any) => d.customBarColor);
+        this.ctx.interactions.bindBars(this.bars);
         this.ctx.interactions.applyAccessibility(this.bars);
         if (this.ctx.isHighContrast) {
             // Override any per-bar / conditional fill copied straight into
@@ -367,12 +368,12 @@ export class ChartRenderer {
         }
 
         // Clear selection when clicking outside a bar
-        this.ctx.interactions.wireRootClear(this.svg, () => this.bars);
+        this.ctx.interactions.wireRootClear(this.svg);
 
         //reset selections when the visual is re-drawn
         this.ctx.interactions.resyncOnRedraw(this.bars);
         if (this.ctx.visualType == "drillable" || this.ctx.visualType == "staticCategory" || this.ctx.visualType == "drillableCategory") {
-            this.ctx.interactions.wireClick(this.bars, () => this.bars);
+            this.ctx.interactions.wireClick(this.bars);
         }
 
         this.ctx.tooltipServiceWrapper.addTooltip(g.selectAll('rect'),
@@ -647,7 +648,7 @@ export class ChartRenderer {
         this.applyGridlineStyle(myxAxisParent.selectAll('path'), this.ctx.settings.yAxisFormatting.gridLineColor);
         var xAxislabels = myxAxisParent.selectAll(".tick text").data(currData).text((d: any) => d.displayName);
         if (this.ctx.visualType == "drillable" || this.ctx.visualType == "staticCategory" || this.ctx.visualType == "drillableCategory") {
-            this.ctx.interactions.wireClick(xAxislabels, () => this.bars);
+            this.ctx.interactions.wireClick(xAxislabels);
         }
         this.ctx.tooltipServiceWrapper.addTooltip(myxAxisParent.selectAll(".tick text"),
             (dataPoint: any) => buildCategoryTooltip(dataPoint),

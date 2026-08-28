@@ -64,6 +64,11 @@ the authoritative version is in [`pbiviz.json`](pbiviz.json).
   halo so a label spilling off a short bar stays readable.
 - **"Other" step order.** The aggregated "Other" step now sorts before the total
   pillar instead of on top of it.
+- **Join Bars connectors.** In horizontal orientation the connectors were drawn
+  on the far end of each bar instead of the shared cumulative level, and the
+  connector into the total pillar landed at zero (so it looked missing). Both
+  orientations now place the connector on the meeting edge. The connector stroke
+  width is also floored so the default is visible.
 - **Font default** no longer renders as `'"Segoe UI", wf_…` in the format pane's
   font picker.
 

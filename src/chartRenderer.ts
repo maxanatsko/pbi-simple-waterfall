@@ -467,16 +467,27 @@ export class ChartRenderer {
         if (this.ctx.renderSettings.yAxisJoinBars) {
             const mainAttr = o.mainPos;
             const crossAttr = o.crossPosAttr;
+            // The connector sits at the bar edge that meets the previous bar --
+            // the shared cumulative level. `base` is that bar's near-origin edge:
+            // its top for vertical (higher value = smaller y), its left for
+            // horizontal (higher value = larger x). `atHighValueEnd` is true when
+            // the shared level is the bar's higher-value edge (a decreasing step,
+            // or a pillar). So we add `barCrossSize` for the high-value edge in
+            // horizontal, and for the low-value edge in vertical.
             const connectorCross = (node: any, d: any, i: number) => {
                 const base = parseFloat(d3.select(node).attr(crossAttr));
-                const cond = ((d.value < 0 && !d.isPillar) || (d.value > 0 && d.isPillar));
-                return cond ? base : base + o.barCrossSize(d, i, this.ctx.barChartData);
+                const atHighValueEnd = ((d.value < 0 && !d.isPillar) || (d.value > 0 && d.isPillar));
+                const addSize = o.name === "Vertical" ? !atHighValueEnd : atHighValueEnd;
+                return addSize ? base + o.barCrossSize(d, i, this.ctx.barChartData) : base;
             };
+            // Floor at 1pt: the /10 scale makes the default width (1) an
+            // invisible 0.1pt, so "Join Bars" looked like it did nothing.
+            const joinStrokePt = Math.max(1, this.ctx.renderSettings.yAxisJoinBarsStrokeWidth / 10);
             this.bars.each((d: any, i: number, nodes: any) => {
                 if (i != 0) {
                     g.append('line')
                         .style("stroke", this.ctx.renderSettings.yAxisJoinBarsColor)
-                        .style("stroke-width", this.ctx.renderSettings.yAxisJoinBarsStrokeWidth / 10 + "pt")
+                        .style("stroke-width", joinStrokePt + "pt")
                         .attr(mainAttr + "1", parseFloat(d3.select(nodes[i - 1]).attr(mainAttr)) + xScale.bandwidth())
                         .attr(crossAttr + "1", connectorCross(nodes[i], d, i))
                         .attr(mainAttr + "2", parseFloat(d3.select(nodes[i]).attr(mainAttr)))

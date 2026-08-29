@@ -258,7 +258,7 @@ class ChartOrientationCard extends formattingSettings.CompositeCard {
   limitBreakdown = toggle("limitBreakdown", "Limit Steps", false);
   maxBreakdown = num("maxBreakdown", "Max Steps", 5, 1, 100);
 
-  layoutGroup = group("layout", "Layout", [this.orientation]);
+  layoutGroup = group("orientationLayout", "Layout", [this.orientation]);
   stepsGroup = group("steps", "Steps", [this.sortData, this.limitBreakdown, this.maxBreakdown]);
   sentimentGroup = group("sentiment", "Sentiment formatting", [this.useSentimentFeatures]);
 
@@ -325,7 +325,7 @@ class LegendCard extends formattingSettings.CompositeCard {
   topLevelSlice = this.show;
 
   textGroup = group("text", "Text", [this.textFavourable, this.textAdverse]);
-  fontGroup = group("font", "Font", [this.font, this.fontColor]);
+  fontGroup = group("legendFont", "Font", [this.font, this.fontColor]);
 
   groups = [this.textGroup, this.fontGroup];
 }
@@ -349,8 +349,8 @@ class XAxisCard extends formattingSettings.CompositeCard {
   topLevelSlice = this.show;
 
   labelsGroup = group("labels", "Labels", [this.font, this.fontColor, this.labelWrapText, this.padding]);
-  layoutGroup = group("layout", "Layout", [this.fitToWidth, this.barWidth]);
-  gridlinesGroup = group("gridlines", "Gridlines", [this.gridLineStrokeWidth, this.gridLineColor], this.showGridLine);
+  layoutGroup = group("xAxisLayout", "Layout", [this.fitToWidth, this.barWidth]);
+  gridlinesGroup = group("xAxisGridlines", "Gridlines", [this.gridLineStrokeWidth, this.gridLineColor], this.showGridLine);
 
   groups = [this.labelsGroup, this.layoutGroup, this.gridlinesGroup];
 }
@@ -385,7 +385,7 @@ class YAxisCard extends formattingSettings.CompositeCard {
   valuesGroup = group("values", "Values",
     [this.font, this.fontColor, this.YAxisValueFormatOption, this.decimalPlaces], this.showYAxisValues);
   scaleGroup = group("scale", "Scale", [this.YAxisDataPointOption]);
-  gridlinesGroup = group("gridlines", "Gridlines", [this.gridLineStrokeWidth, this.gridLineColor], this.showGridLine);
+  gridlinesGroup = group("yAxisGridlines", "Gridlines", [this.gridLineStrokeWidth, this.gridLineColor], this.showGridLine);
   zeroLineGroup = group("zeroLine", "Zero line", [this.zeroLineStrokeWidth, this.zeroLineColor], this.showZeroAxisGridLine);
   connectorsGroup = group("connectors", "Connectors", [this.joinBarsStrokeWidth, this.joinBarsColor], this.joinBars);
 
@@ -417,7 +417,7 @@ class LabelsCard extends formattingSettings.CompositeCard {
   decimalPlaces = num("decimalPlaces", "Value decimal places", 0, 0, 15);
   HideZeroBlankValues = toggle("HideZeroBlankValues", "Hide Zero / Blank values", false);
 
-  fontGroup = group("font", "Font", [this.font]);
+  fontGroup = group("labelsFont", "Font", [this.font]);
   // color / position group slices are rebuilt in applyState().
   colorGroup = group("color", "Color", [this.useDefaultFontColor, this.fontColor]);
   positionGroup = group("position", "Position", [this.useDefaultLabelPositioning, this.labelPosition]);

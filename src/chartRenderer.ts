@@ -14,6 +14,11 @@ import {
     BAND_PADDING,
     MARGIN_BUMP,
     MAX_AXIS_STROKE_PT,
+    MIN_BAND_STEP_PX,
+    MIN_PLOT_CROSS_PX,
+    LABEL_LINE_PT_TO_PX,
+    HEADROOM_MAX_FRACTION,
+    EDGE_LABEL_GUTTER_MIN_PX,
     Y_AXIS_TICK_COUNT,
     SCROLLBAR_TRACK_FILL,
     SCROLLBAR_TRACK_OPACITY,
@@ -172,6 +177,11 @@ export class ChartRenderer {
             // shrunk this.innerHeight. Rebuild so the value scale's zero lands on
             // the category-axis line rather than the container's bottom edge.
             this.rebuildOrientation();
+            // With the final plot height known, re-derive the value domain so its
+            // head-room is a few pixels (label height), not a y-axis tick step --
+            // a tick step is a large fraction of a short plot and was crushing
+            // the bars into a sliver / clipping the total pillar.
+            this.applyPixelHeadroom();
             this.createCrossAxis(this.svgYAxis, this.margin.left + this.yAxisWidth, findRightHorizontal);
             this.createCrossAxis(this.gScrollable, 0, findRightHorizontal);
         } else {
@@ -238,14 +248,63 @@ export class ChartRenderer {
             yScaleTickValues.push(lastTickValueforPositive);
         }
         if (minValue < 0) {
+            // One step of head-room below the minimum, mirroring the `maxValue > 0`
+            // branch above. A second step here starved short plots of vertical
+            // space (the empty band under the lowest bar) without buying much.
             const lastTickValueforNegative = yScaleTickValues[0] + (yScaleTickValues[0] - yScaleTickValues[1]);
-            const lastTickValueforNegative2 = yScaleTickValues[0] + (yScaleTickValues[0] - yScaleTickValues[1]) * 2;
-            //add 2 steps to have enough space between the xAxis and the labels.
-            minValue = lastTickValueforNegative2;
-            yScaleTickValues.unshift(lastTickValueforNegative, lastTickValueforNegative2);
+            minValue = lastTickValueforNegative;
+            yScaleTickValues.unshift(lastTickValueforNegative);
         }
 
         return { minValue, maxValue, yScaleTickValues };
+    }
+
+    /** Vertical only. On a short plot one y-axis tick step of head-room (what
+     *  `computeMinMaxValue` seeds) is a large fraction of the height, which
+     *  crushes the bars into a sliver and pushes the total pillar + its label
+     *  off the top edge. If the current domain already leaves at least one
+     *  label line of head-room above the tallest bar (and below the lowest,
+     *  when the waterfall goes negative) this is a no-op; otherwise the domain
+     *  is re-derived so that head-room is a fixed pixel size. Runs after the
+     *  last `rebuildOrientation()` and before the cross axis / bars are drawn. */
+    private applyPixelHeadroom(): void {
+        const h = this.innerHeight;
+        if (!(h > 0)) return;
+
+        const { min: tightMin, max: tightMax } = this.cumulativeExtent(this.ctx.barChartData);
+        let dataSpan = tightMax - tightMin;
+        if (!(dataSpan > 0)) {
+            dataSpan = Math.abs(tightMax) || Math.abs(tightMin) || 1;
+        }
+
+        const rs = this.ctx.renderSettings;
+        const labelPx = rs.labelsShow ? rs.labelsFontSize * LABEL_LINE_PT_TO_PX + 6 : 4;
+        const cap = h * HEADROOM_MAX_FRACTION;
+        const topPad = Math.min(labelPx, cap);
+        const botPad = tightMin < 0 ? Math.min(labelPx, cap) : 0;
+
+        // Head-room the current domain already provides, in pixels.
+        const curTop = this.orientation.crossPos(tightMax);
+        const curBot = h - this.orientation.crossPos(tightMin);
+        if (curTop >= topPad - 0.5 && curBot >= botPad - 0.5) {
+            return;
+        }
+
+        // cross(v) = h * (max - v) / (max - min); solving cross(tightMax) >= topPad
+        // and (below-zero) cross(tightMin) <= h - botPad for the domain that just
+        // meets both gives span = dataSpan / (1 - topPad/h - botPad/h).
+        const ft = topPad / h;
+        const fb = botPad / h;
+        const span = dataSpan / (1 - ft - fb);
+        this.minValue = tightMin - fb * span;
+        this.maxValue = tightMax + ft * span;
+        // Round tick *labels* within the (unrounded) domain -- widening the domain
+        // to "nice" round endpoints would re-inflate the head-room the whole
+        // method is trying to bound.
+        this.yScaleTickValues = d3.scaleLinear()
+            .domain([this.minValue, this.maxValue])
+            .ticks(Y_AXIS_TICK_COUNT);
+        this.rebuildOrientation();
     }
 
     private applyCategoryAxisLayout(gParent: any, allDatatemp: any): number {
@@ -592,92 +651,110 @@ export class ChartRenderer {
 
     private checkBarWidth(): void {
         const o = this.orientation;
-        if (!this.ctx.renderSettings.xAxisFitToWidth) {
-            var xScale = o.mainBand(this.ctx.barChartData.map(this.xValue));
-            var currentBarWidth = xScale.step();
-            if (currentBarWidth < this.ctx.renderSettings.xAxisBarWidth) {
-                currentBarWidth = this.ctx.renderSettings.xAxisBarWidth;
+        // "Fit to width" off -> honour the user's Minimum Bar Width. On (the
+        // default) -> still stop shrinking at the legibility floor and let the
+        // scrollbar take over, rather than squashing the bars (and, in turn,
+        // the wrapped category-label block) without limit.
+        const minStep = this.ctx.renderSettings.xAxisFitToWidth
+            ? MIN_BAND_STEP_PX
+            : this.ctx.renderSettings.xAxisBarWidth;
+        var xScale = o.mainBand(this.ctx.barChartData.map(this.xValue));
+        var currentBarWidth = xScale.step();
+        if (currentBarWidth < minStep) {
+            currentBarWidth = minStep;
 
-                var scrollBarGroup = this.svg.append('g');
-                var scrollbarContainer = scrollBarGroup.append('rect')
-                    .attr('width', o.scrollOrient == "x" ? this.width : this.ctx.scrollbarBreath)
-                    .attr('height', o.scrollOrient == "x" ? this.ctx.scrollbarBreath : this.innerHeight)
-                    .attr('x', o.scrollOrient == "x" ? 0 : this.width - this.ctx.scrollbarBreath - this.margin.left)
-                    .attr('y', o.scrollOrient == "x" ? this.height - this.ctx.scrollbarBreath : 0)
-                    .attr('fill', SCROLLBAR_TRACK_FILL)
-                    .attr('opacity', SCROLLBAR_TRACK_OPACITY)
-                    .attr('rx', 4)
-                    .attr('ry', 4);
+            var scrollBarGroup = this.svg.append('g');
+            var scrollbarContainer = scrollBarGroup.append('rect')
+                .attr('width', o.scrollOrient == "x" ? this.width : this.ctx.scrollbarBreath)
+                .attr('height', o.scrollOrient == "x" ? this.ctx.scrollbarBreath : this.innerHeight)
+                .attr('x', o.scrollOrient == "x" ? 0 : this.width - this.ctx.scrollbarBreath - this.margin.left)
+                .attr('y', o.scrollOrient == "x" ? this.height - this.ctx.scrollbarBreath : 0)
+                .attr('fill', SCROLLBAR_TRACK_FILL)
+                .attr('opacity', SCROLLBAR_TRACK_OPACITY)
+                .attr('rx', 4)
+                .attr('ry', 4);
 
-                var scrollBarGroupHeight: number = this.innerHeight;
-                if (o.scrollOrient == "x") {
-                    this.innerWidth = currentBarWidth * this.ctx.barChartData.length + (currentBarWidth * xScale.padding());
-                    this.innerHeight = this.height - this.margin.top - this.margin.bottom - this.ctx.scrollbarBreath;
-                } else {
-                    this.innerHeight = currentBarWidth * this.ctx.barChartData.length + (currentBarWidth * xScale.padding());
-                }
+            var scrollBarGroupHeight: number = this.innerHeight;
+            if (o.scrollOrient == "x") {
+                this.innerWidth = currentBarWidth * this.ctx.barChartData.length + (currentBarWidth * xScale.padding());
+                this.innerHeight = this.height - this.margin.top - this.margin.bottom - this.ctx.scrollbarBreath;
+            } else {
+                this.innerHeight = currentBarWidth * this.ctx.barChartData.length + (currentBarWidth * xScale.padding());
+            }
 
-                var dragStartPosition = 0;
-                var dragScrollBarXStartposition = 0;
+            var dragStartPosition = 0;
+            var dragScrollBarXStartposition = 0;
 
-                if (o.scrollOrient == "x") {
-                    var scrollbarwidth = this.width * this.width / this.innerWidth;
-                    var scrollbar: d3.Selection<any, any, any, any> = scrollBarGroup.append('rect')
-                        .attr('width', scrollbarwidth).attr('height', this.ctx.scrollbarBreath)
-                        .attr('x', 0).attr('y', this.height - this.ctx.scrollbarBreath)
-                        .attr('fill', SCROLLBAR_THUMB_FILL).attr('opacity', SCROLLBAR_THUMB_OPACITY).attr('rx', 4).attr('ry', 4);
-                    var scrollBarDragBar = d3.drag().on("start", (event) => {
-                        dragStartPosition = event.x;
-                        dragScrollBarXStartposition = parseInt(scrollbar.attr('x'));
-                    }).on("drag", (event) => {
-                        var m = event.x - dragStartPosition;
-                        if (dragScrollBarXStartposition + m >= 0 && (dragScrollBarXStartposition + m + scrollbarwidth <= this.width)) {
-                            scrollbar.attr('x', dragScrollBarXStartposition + m);
-                            this.gScrollable.attr('transform', `translate(${(dragScrollBarXStartposition + m) / (this.width - scrollbarwidth) * (this.innerWidth - this.width) * -1},${0})`);
-                        }
-                    });
-                    var scrollBarWheel = d3.zoom().on("zoom", (event) => {
-                        var zc = parseInt(scrollbarContainer.attr('width'));
-                        var dY = event.sourceEvent.deltaY;
-                        var zm = dY / 100 * zc / this.ctx.barChartData.length;
-                        var zStart = parseInt(scrollbar.attr('x'));
-                        var zH = parseInt(scrollbar.attr('width'));
-                        var m = zStart + zm;
-                        if (m < 0) m = 0;
-                        if (m + zH > zc) m = zc - zH;
-                        scrollbar.attr('x', m);
-                        this.gScrollable.attr('transform', `translate(${(m) / (this.width - scrollbarwidth) * (this.innerWidth - this.width) * -1},${0})`);
-                    });
-                    scrollBarDragBar(this.svg); scrollBarWheel(this.svg); scrollBarDragBar(scrollbar);
-                } else {
-                    var scrollbarHeight = (scrollBarGroupHeight) * (scrollBarGroupHeight) / this.innerHeight;
-                    var scrollbar: d3.Selection<any, any, any, any> = scrollBarGroup.append('rect')
-                        .attr('width', this.ctx.scrollbarBreath).attr('height', scrollbarHeight)
-                        .attr('x', this.width - this.ctx.scrollbarBreath - this.margin.left).attr('y', 0)
-                        .attr('fill', SCROLLBAR_THUMB_FILL).attr('opacity', SCROLLBAR_THUMB_OPACITY).attr('rx', 4).attr('ry', 4);
-                    var scrollBarDragBar = d3.drag().on("start", (event) => {
-                        dragStartPosition = event.y;
-                        dragScrollBarXStartposition = parseInt(scrollbar.attr('y'));
-                    }).on("drag", (event) => {
-                        var m = event.y - dragStartPosition;
-                        if (dragScrollBarXStartposition + m >= 0 && (dragScrollBarXStartposition + m + scrollbarHeight <= (this.height - this.margin.top - this.margin.bottom - this.yAxisHeightHorizontal))) {
-                            scrollbar.attr('y', dragScrollBarXStartposition + m);
-                            this.gScrollable.attr('transform', `translate(${0},${(dragScrollBarXStartposition + m) / (this.height - this.margin.top - this.margin.bottom - this.yAxisHeightHorizontal - scrollbarHeight) * (this.innerHeight - this.height + this.margin.top + this.margin.bottom + this.yAxisHeightHorizontal) * -1})`);
-                        }
-                    });
-                    var scrollBarWheel = d3.zoom().on("zoom", (event) => {
-                        var zc = parseInt(scrollbarContainer.attr('height'));
-                        var zm = event.sourceEvent.deltaY / 100 * zc / this.ctx.barChartData.length;
-                        var zStart = parseInt(scrollbar.attr('y'));
-                        var zH = parseInt(scrollbar.attr('height'));
-                        var m = zStart + zm;
-                        if (m < 0) m = 0;
-                        if (m + zH > zc) m = zc - zH;
-                        scrollbar.attr('y', m);
-                        this.gScrollable.attr('transform', `translate(${0},${(m) / (this.height - this.margin.top - this.margin.bottom - this.yAxisHeightHorizontal - scrollbarHeight) * (this.innerHeight - this.height + this.margin.top + this.margin.bottom + this.yAxisHeightHorizontal) * -1})`);
-                    });
-                    scrollBarDragBar(this.svg); scrollBarWheel(this.svg); scrollBarDragBar(scrollbar);
-                }
+            if (o.scrollOrient == "x") {
+                // The band scale fills `this.innerWidth` exactly, so the last
+                // band ends flush with the content edge -- and at full-right
+                // scroll that edge is the viewport edge. Both the outermost
+                // category label and the centre-anchored value label are wider
+                // than their band and spill past it (see `labelAlignment`, whose
+                // dx goes negative for a label wider than the bar), so the total
+                // pillar's label -- and a sliver of the pillar itself -- got
+                // clipped with no way to scroll further. Give the scroll one
+                // extra gutter of travel past the last bar. Deliberately not
+                // folded into `this.innerWidth`: that stays the band range end,
+                // so the bars, category axis and gridlines are unchanged.
+                const endGutter = Math.max(currentBarWidth, EDGE_LABEL_GUTTER_MIN_PX);
+                const scrollSpan = this.innerWidth + endGutter;
+                var scrollbarwidth = this.width * this.width / scrollSpan;
+                var scrollbar: d3.Selection<any, any, any, any> = scrollBarGroup.append('rect')
+                    .attr('width', scrollbarwidth).attr('height', this.ctx.scrollbarBreath)
+                    .attr('x', 0).attr('y', this.height - this.ctx.scrollbarBreath)
+                    .attr('fill', SCROLLBAR_THUMB_FILL).attr('opacity', SCROLLBAR_THUMB_OPACITY).attr('rx', 4).attr('ry', 4);
+                var scrollBarDragBar = d3.drag().on("start", (event) => {
+                    dragStartPosition = event.x;
+                    dragScrollBarXStartposition = parseInt(scrollbar.attr('x'));
+                }).on("drag", (event) => {
+                    var m = event.x - dragStartPosition;
+                    if (dragScrollBarXStartposition + m >= 0 && (dragScrollBarXStartposition + m + scrollbarwidth <= this.width)) {
+                        scrollbar.attr('x', dragScrollBarXStartposition + m);
+                        this.gScrollable.attr('transform', `translate(${(dragScrollBarXStartposition + m) / (this.width - scrollbarwidth) * (scrollSpan - this.width) * -1},${0})`);
+                    }
+                });
+                var scrollBarWheel = d3.zoom().on("zoom", (event) => {
+                    var zc = parseInt(scrollbarContainer.attr('width'));
+                    var dY = event.sourceEvent.deltaY;
+                    var zm = dY / 100 * zc / this.ctx.barChartData.length;
+                    var zStart = parseInt(scrollbar.attr('x'));
+                    var zH = parseInt(scrollbar.attr('width'));
+                    var m = zStart + zm;
+                    if (m < 0) m = 0;
+                    if (m + zH > zc) m = zc - zH;
+                    scrollbar.attr('x', m);
+                    this.gScrollable.attr('transform', `translate(${(m) / (this.width - scrollbarwidth) * (scrollSpan - this.width) * -1},${0})`);
+                });
+                scrollBarDragBar(this.svg); scrollBarWheel(this.svg); scrollBarDragBar(scrollbar);
+            } else {
+                var scrollbarHeight = (scrollBarGroupHeight) * (scrollBarGroupHeight) / this.innerHeight;
+                var scrollbar: d3.Selection<any, any, any, any> = scrollBarGroup.append('rect')
+                    .attr('width', this.ctx.scrollbarBreath).attr('height', scrollbarHeight)
+                    .attr('x', this.width - this.ctx.scrollbarBreath - this.margin.left).attr('y', 0)
+                    .attr('fill', SCROLLBAR_THUMB_FILL).attr('opacity', SCROLLBAR_THUMB_OPACITY).attr('rx', 4).attr('ry', 4);
+                var scrollBarDragBar = d3.drag().on("start", (event) => {
+                    dragStartPosition = event.y;
+                    dragScrollBarXStartposition = parseInt(scrollbar.attr('y'));
+                }).on("drag", (event) => {
+                    var m = event.y - dragStartPosition;
+                    if (dragScrollBarXStartposition + m >= 0 && (dragScrollBarXStartposition + m + scrollbarHeight <= (this.height - this.margin.top - this.margin.bottom - this.yAxisHeightHorizontal))) {
+                        scrollbar.attr('y', dragScrollBarXStartposition + m);
+                        this.gScrollable.attr('transform', `translate(${0},${(dragScrollBarXStartposition + m) / (this.height - this.margin.top - this.margin.bottom - this.yAxisHeightHorizontal - scrollbarHeight) * (this.innerHeight - this.height + this.margin.top + this.margin.bottom + this.yAxisHeightHorizontal) * -1})`);
+                    }
+                });
+                var scrollBarWheel = d3.zoom().on("zoom", (event) => {
+                    var zc = parseInt(scrollbarContainer.attr('height'));
+                    var zm = event.sourceEvent.deltaY / 100 * zc / this.ctx.barChartData.length;
+                    var zStart = parseInt(scrollbar.attr('y'));
+                    var zH = parseInt(scrollbar.attr('height'));
+                    var m = zStart + zm;
+                    if (m < 0) m = 0;
+                    if (m + zH > zc) m = zc - zH;
+                    scrollbar.attr('y', m);
+                    this.gScrollable.attr('transform', `translate(${0},${(m) / (this.height - this.margin.top - this.margin.bottom - this.yAxisHeightHorizontal - scrollbarHeight) * (this.innerHeight - this.height + this.margin.top + this.margin.bottom + this.yAxisHeightHorizontal) * -1})`);
+                });
+                scrollBarDragBar(this.svg); scrollBarWheel(this.svg); scrollBarDragBar(scrollbar);
             }
         }
     }
@@ -755,8 +832,17 @@ export class ChartRenderer {
         let resultInnerHeight = innerHeight;
         let findRightHorizontal = 0;
         if (o.scrollOrient == "x") {
-            g.attr('transform', `translate(${0},${height - xAxisPosition - margin.bottom - scrollbarBreath + legendHeight})`);
-            resultInnerHeight = height - margin.top - margin.bottom - xAxisPosition - scrollbarBreath + legendHeight;
+            // Safety net: never let the (measured, unbounded) category-label
+            // block shrink the plot below MIN_PLOT_CROSS_PX -- past that the
+            // value scale degenerates/inverts and the tallest bar + its label
+            // render above the plot. Cap the block and keep the axis line on
+            // the same level the value scale's zero uses. The scrollbar path
+            // (checkBarWidth) normally keeps xAxisPosition small enough that
+            // this cap never bites.
+            const available = height - margin.top - margin.bottom - scrollbarBreath + legendHeight;
+            const block = Math.min(xAxisPosition, Math.max(available - MIN_PLOT_CROSS_PX, 0));
+            g.attr('transform', `translate(${0},${margin.top + available - block})`);
+            resultInnerHeight = available - block;
         } else {
             findRightHorizontal = xAxisPosition;
             g.attr('transform', `translate(${xAxisPosition * -1},${0})`);
@@ -934,23 +1020,24 @@ export class ChartRenderer {
                             }
                         }
                     } else {
-                        if (line.length == 1) {
-                            var currline = line[0].split("");
-                            while (tspan.node()!.getComputedTextLength() > width) {
-                                currline.pop();
-                                line[0] = currline.join("");
-                                tspan.text(line[0]);
-                            }
-                        } else {
+                        // A single word wider than the cell is truncated character
+                        // by character. `line` must be kept in step with what is
+                        // actually rendered: the next iteration re-renders
+                        // `line.join(" ")`, so leaving the untruncated word in
+                        // `line` puts the full-width word back on the line and it
+                        // spills across the neighbouring categories.
+                        var currline: string[];
+                        if (line.length != 1) {
                             line.pop();
                             tspan.text(line.join(joinSep));
                             line = [word];
                             tspan = t.append("tspan").attr("x", 0).attr("y", y).attr("dy", ++lineNumber * lineHeight + dy + "em").text(word);
-                            currline = tspan.text().split("");
-                            while (tspan.node()!.getComputedTextLength() > width) {
-                                currline.pop();
-                                tspan.text(currline.join(""));
-                            }
+                        }
+                        currline = line[0].split("");
+                        while (currline.length > 0 && tspan.node()!.getComputedTextLength() > width) {
+                            currline.pop();
+                            line[0] = currline.join("");
+                            tspan.text(line[0]);
                         }
                     }
                 }

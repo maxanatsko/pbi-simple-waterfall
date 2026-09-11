@@ -147,3 +147,51 @@ describe("horizontal scroll reserves an end gutter past the last bar", () => {
         expect(scrollSpan - lastBarRight).toBeGreaterThanOrEqual(EDGE_LABEL_GUTTER_MIN_PX - 1);
     });
 });
+
+/** The scrollbar thumb/track sizing must use the actual plot viewport, not the
+ *  full SVG width -- a large right margin makes the two diverge. Sized against
+ *  the wrong (larger) denominator, the thumb comes out wider than its track,
+ *  breaking the drag bounds. Reproduces with just enough categories to clear
+ *  the legibility floor without also outgrowing the (too-large) old
+ *  denominator -- more categories than this and the old formula happens to
+ *  land back in range by coincidence. */
+function narrowMissDataView(rightMargin: number): powerbi.DataView {
+    const rows: (string | number)[][] = [["Category", "Value"], ["Start", 100]];
+    for (let i = 0; i < 10; i++) rows.push([`Step ${i}`, i % 2 === 0 ? 8 : -6]);
+    rows.push(["End", 120]);
+    const dv = new MatrixDataViewBuilder(new DataTable(rows))
+        .withRowGroups([{
+            columns: [{
+                metadata: { name: "Category", displayName: "Category", type: { text: true }, format: "" },
+                role: "Category",
+                queryName: "Table.Category",
+            }],
+        }])
+        .withValues([{
+            metadata: { name: "Value", displayName: "Value", type: { numeric: true }, format: "" },
+            role: "Y",
+            queryName: "Table.Value",
+        }])
+        .build();
+    (dv.metadata as any).objects = {
+        chartOrientation: { orientation: "Vertical" },
+        margins: { rightMargin },
+    };
+    return dv;
+}
+
+describe("scrollbar thumb never exceeds its track, even with a wide right margin", () => {
+    it("Vertical: thumb width stays below track width with rightMargin at its max", () => {
+        const b = new VisualBuilder(400, 300);
+        b.init();
+        b.update(narrowMissDataView(100));
+        const root = b.element;
+
+        const track = root.querySelector("rect[fill='#e1e1e1']")!;
+        const thumb = root.querySelector("rect[fill='#000']")!;
+        const viewport = parseFloat(track.getAttribute("width")!);
+        const thumbWidth = parseFloat(thumb.getAttribute("width")!);
+        expect(thumbWidth).toBeGreaterThan(0);
+        expect(thumbWidth).toBeLessThan(viewport);
+    });
+});

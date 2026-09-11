@@ -664,8 +664,14 @@ export class ChartRenderer {
             currentBarWidth = minStep;
 
             var scrollBarGroup = this.svg.append('g');
+            // Captured before the branch below overwrites this.innerWidth/innerHeight
+            // with the expanded content size -- these are the pre-expansion plot
+            // viewport dimensions, used as the scrollbar's "visible window" so the
+            // thumb/track sizing and drag bounds match what's actually on screen.
+            var scrollBarGroupWidth: number = this.innerWidth;
+            var scrollBarGroupHeight: number = this.innerHeight;
             var scrollbarContainer = scrollBarGroup.append('rect')
-                .attr('width', o.scrollOrient == "x" ? this.width : this.ctx.scrollbarBreath)
+                .attr('width', o.scrollOrient == "x" ? scrollBarGroupWidth : this.ctx.scrollbarBreath)
                 .attr('height', o.scrollOrient == "x" ? this.ctx.scrollbarBreath : this.innerHeight)
                 .attr('x', o.scrollOrient == "x" ? 0 : this.width - this.ctx.scrollbarBreath - this.margin.left)
                 .attr('y', o.scrollOrient == "x" ? this.height - this.ctx.scrollbarBreath : 0)
@@ -674,7 +680,6 @@ export class ChartRenderer {
                 .attr('rx', 4)
                 .attr('ry', 4);
 
-            var scrollBarGroupHeight: number = this.innerHeight;
             if (o.scrollOrient == "x") {
                 this.innerWidth = currentBarWidth * this.ctx.barChartData.length + (currentBarWidth * xScale.padding());
                 this.innerHeight = this.height - this.margin.top - this.margin.bottom - this.ctx.scrollbarBreath;
@@ -699,7 +704,7 @@ export class ChartRenderer {
                 // so the bars, category axis and gridlines are unchanged.
                 const endGutter = Math.max(currentBarWidth, EDGE_LABEL_GUTTER_MIN_PX);
                 const scrollSpan = this.innerWidth + endGutter;
-                var scrollbarwidth = this.width * this.width / scrollSpan;
+                var scrollbarwidth = scrollBarGroupWidth * scrollBarGroupWidth / scrollSpan;
                 var scrollbar: d3.Selection<any, any, any, any> = scrollBarGroup.append('rect')
                     .attr('width', scrollbarwidth).attr('height', this.ctx.scrollbarBreath)
                     .attr('x', 0).attr('y', this.height - this.ctx.scrollbarBreath)
@@ -709,9 +714,9 @@ export class ChartRenderer {
                     dragScrollBarXStartposition = parseInt(scrollbar.attr('x'));
                 }).on("drag", (event) => {
                     var m = event.x - dragStartPosition;
-                    if (dragScrollBarXStartposition + m >= 0 && (dragScrollBarXStartposition + m + scrollbarwidth <= this.width)) {
+                    if (dragScrollBarXStartposition + m >= 0 && (dragScrollBarXStartposition + m + scrollbarwidth <= scrollBarGroupWidth)) {
                         scrollbar.attr('x', dragScrollBarXStartposition + m);
-                        this.gScrollable.attr('transform', `translate(${(dragScrollBarXStartposition + m) / (this.width - scrollbarwidth) * (scrollSpan - this.width) * -1},${0})`);
+                        this.gScrollable.attr('transform', `translate(${(dragScrollBarXStartposition + m) / (scrollBarGroupWidth - scrollbarwidth) * (scrollSpan - scrollBarGroupWidth) * -1},${0})`);
                     }
                 });
                 var scrollBarWheel = d3.zoom().on("zoom", (event) => {
@@ -724,7 +729,7 @@ export class ChartRenderer {
                     if (m < 0) m = 0;
                     if (m + zH > zc) m = zc - zH;
                     scrollbar.attr('x', m);
-                    this.gScrollable.attr('transform', `translate(${(m) / (this.width - scrollbarwidth) * (scrollSpan - this.width) * -1},${0})`);
+                    this.gScrollable.attr('transform', `translate(${(m) / (scrollBarGroupWidth - scrollbarwidth) * (scrollSpan - scrollBarGroupWidth) * -1},${0})`);
                 });
                 scrollBarDragBar(this.svg); scrollBarWheel(this.svg); scrollBarDragBar(scrollbar);
             } else {

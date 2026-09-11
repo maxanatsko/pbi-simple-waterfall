@@ -1,7 +1,7 @@
 {
-    "name": "pbi-simple-waterfall",
+    "name": "pbi-simpler-waterfall",
     "version": "3.0.0",
-    "description": "Multi-Step Waterfall - a Power BI custom visual for multi-step waterfall charts.",
+    "description": "Simpler Waterfall - a Power BI custom visual for multi-step waterfall charts.",
     "license": "MIT",
     "author": "Maxim Anatsko <max@maxanatsko.com>",
     "contributors": [

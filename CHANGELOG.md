@@ -1,7 +1,7 @@
 # Changelog
 
-All notable changes to the Multi-Step Waterfall Power BI visual (formerly
-"Simple Waterfall") are documented in this file.
+All notable changes to the Simpler Waterfall Power BI visual (formerly
+"Multi-Step Waterfall", originally "Simple Waterfall") are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Power BI custom visuals use a four-part `major.minor.patch.build` version scheme;
@@ -22,6 +22,10 @@ the authoritative version is in [`pbiviz.json`](pbiviz.json).
 
 ### Changed
 
+- Renamed from **Multi-Step Waterfall** to **Simpler Waterfall** ahead of its
+  first AppSource submission, to read clearly as a fresh, distinct listing
+  rather than a fork of the original "Simple Waterfall" visual. The visual
+  GUID in `pbiviz.json` was regenerated accordingly.
 - TypeScript `strict` mode is now enabled. All resulting type errors in
   `src/visual.ts` were addressed (null-safety around `dataView.matrix`, d3
   `.node()` results, uninitialised class fields, and implicit `any`). No

@@ -1,8 +1,8 @@
 {
     "visual": {
-        "name": "Multi-Step Waterfall",
-        "displayName": "Multi-Step Waterfall",
-        "guid": "MultiStepWaterfallCC31B0DC3B9840DA986AEAB4DBA3D371",
+        "name": "Simpler Waterfall",
+        "displayName": "Simpler Waterfall",
+        "guid": "SimplerWaterfall5B43C89743AA4680A1244632CF2A4F55",
         "visualClassName": "Visual",
         "version": "3.0.0.0",
         "description": "Build multi-step waterfall charts: define pillars from categories or measures, choose a vertical or horizontal layout, and format every element.",

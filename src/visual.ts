@@ -81,7 +81,7 @@ export class Visual implements IVisual {
         // The pbiviz-generated plugin shim calls `new Visual(options?)`; the real
         // Power BI host always supplies them.
         if (!options) {
-            throw new Error("Multi-Step Waterfall: VisualConstructorOptions are required.");
+            throw new Error("Simpler Waterfall: VisualConstructorOptions are required.");
         }
         this.host = options.host;
         this.mainContainer = d3.select<HTMLElement, any>(options.element)
@@ -151,7 +151,7 @@ export class Visual implements IVisual {
         if (measureCount === 0) {
             // Nothing to plot -- fail cleanly rather than let the converters and
             // the value scale derive NaN from an empty bar list.
-            throw new Error("Multi-Step Waterfall: add a measure to the Values field.");
+            throw new Error("Simpler Waterfall: add a measure to the Values field.");
         }
 
         const builder = new WaterfallDataBuilder({

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { VisualSettings, VisualFormattingSettingsModel } from "../src/settings";
 import { visualMode } from "../src/visualType";
+import { FormattingSettingsService } from "powerbi-visuals-utils-formattingmodel";
 
 function fakeSelectionId(key: string): any {
   return { getSelector: () => ({ id: key }) };
@@ -148,7 +149,7 @@ describe("VisualFormattingSettingsModel.applyState", () => {
     const xa = findCard(model, "xAxisFormatting");
     expect(xa.barWidth.visible).toBe(true);          // fitToWidth off -> min width shown
     expect(xa.gridLineColor.visible).toBe(false);    // gridlines off -> colour hidden
-    expect(groupOf(xa, "gridlines").topLevelSlice.name).toBe("showGridLine");
+    expect(groupOf(xa, "xAxisGridlines").topLevelSlice.name).toBe("showGridLine");
 
     const ya = findCard(model, "yAxisFormatting");
     expect(ya.font.visible).toBe(false);             // values hidden -> font hidden
@@ -208,5 +209,43 @@ describe("VisualFormattingSettingsModel.applyState", () => {
       "sentimentFontColorTotal", "sentimentFontColorFavourable", "sentimentFontColorAdverse", "sentimentFontColorOther",
       "labelPositionTotal", "labelPositionFavourable", "labelPositionAdverse", "labelPositionOther",
     ]));
+  });
+
+  // The service derives a group's uid from its `name` alone (`<name>-group`),
+  // with no card prefix -- so two cards using the same group name emit the same
+  // uid and the format pane keys one of them out. That is how the Orientation
+  // dropdown ("Chart Options" -> "Layout") went missing: it collided with the
+  // X-Axis card's "Layout" group.
+  it("every card and group uid in the built formatting model is unique", () => {
+    const model = new VisualFormattingSettingsModel();
+    const settings = new VisualSettings();
+    model.applyState(visualMode("staticCategory"), settings, [row("A"), row("B")], dataView(1));
+
+    const built: any = new FormattingSettingsService().buildFormattingModel(model as any);
+    const uids: string[] = [];
+    for (const card of built.cards) {
+      uids.push(card.uid);
+      for (const group of card.groups ?? []) {
+        uids.push(group.uid);
+      }
+    }
+    const duplicates = uids.filter((uid, i) => uids.indexOf(uid) !== i);
+    expect(duplicates).toEqual([]);
+  });
+
+  it("the Orientation dropdown is present in Chart Options -> Layout", () => {
+    const model = new VisualFormattingSettingsModel();
+    const settings = new VisualSettings();
+    model.applyState(visualMode("staticCategory"), settings, [row("A")], dataView(1));
+
+    const co = findCard(model, "chartOrientation");
+    expect(co.visible ?? true).toBe(true);
+    expect(co.layoutGroup.visible ?? true).toBe(true);
+    expect(groupSliceNames(co, "orientationLayout")).toEqual(["orientation"]);
+
+    const built: any = new FormattingSettingsService().buildFormattingModel(model as any);
+    const card = built.cards.filter((c: any) => c.uid === "chartOrientation-card")[0];
+    const layout = card.groups.filter((g: any) => g.uid === "orientationLayout-group")[0];
+    expect(layout.slices.map((s: any) => s.uid)).toEqual(["chartOrientation-orientation"]);
   });
 });

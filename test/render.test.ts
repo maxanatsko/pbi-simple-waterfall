@@ -104,3 +104,61 @@ describe("waterfall renders both orientations with structural symmetry", () => {
         h.destroy();
     });
 });
+
+/** With a negative minimum, Horizontal keeps two tick-steps of head-room below
+ *  it (restored per a Codex review comment on PR #8) while Vertical keeps one
+ *  -- the latter has `applyPixelHeadroom()` topping it back up afterwards if a
+ *  single step falls short, but Horizontal has no such follow-up pass, and
+ *  that head-room is also where a negative bar's "Outside end" label sits
+ *  before `labelFit` prunes anything crossing x=0. Each orientation's value
+ *  axis is rendered twice (`svgYAxis` + the scrollable copy), so the one extra
+ *  padding tick shows up twice in a whole-root query. */
+function negativeMinDataView(orientation: "Vertical" | "Horizontal"): powerbi.DataView {
+    const table = new DataTable([
+        ["Category", "Value"],
+        ["Start", 100],
+        ["Drop", -140],
+        ["Recover", 60],
+        ["End", 20],
+    ]);
+    const builder = new MatrixDataViewBuilder(table);
+    builder.withRowGroups([
+        {
+            columns: [
+                {
+                    metadata: { name: "Category", displayName: "Category", type: { text: true }, format: "" },
+                    role: "Category",
+                    queryName: "Table.Category",
+                },
+            ],
+        },
+    ]);
+    builder.withValues([
+        {
+            metadata: { name: "Value", displayName: "Value", type: { numeric: true }, format: "" },
+            role: "Y",
+            queryName: "Table.Value",
+        },
+    ]);
+    const dataView = builder.build();
+    (dataView.metadata as any).objects = { chartOrientation: { orientation } };
+    return dataView;
+}
+
+describe("negative-minimum head-room differs by orientation", () => {
+    it("Horizontal renders two more value-axis ticks than Vertical for the same negative-minimum data", () => {
+        const v = new VisualBuilder(800, 600);
+        v.init();
+        v.update(negativeMinDataView("Vertical"));
+        const h = new VisualBuilder(800, 600);
+        h.init();
+        h.update(negativeMinDataView("Horizontal"));
+
+        const verticalTicks = counts(v.element).valueTicks;
+        const horizontalTicks = counts(h.element).valueTicks;
+        expect(verticalTicks).toBeGreaterThan(0);
+        expect(horizontalTicks).toBe(verticalTicks + 2);
+        v.destroy();
+        h.destroy();
+    });
+});

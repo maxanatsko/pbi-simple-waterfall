@@ -1,7 +1,7 @@
 # Changelog
 
-All notable changes to the Multi-Step Waterfall Power BI visual (formerly
-"Simple Waterfall") are documented in this file.
+All notable changes to the Simpler Waterfall Power BI visual (formerly
+"Multi-Step Waterfall", originally "Simple Waterfall") are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Power BI custom visuals use a four-part `major.minor.patch.build` version scheme;
@@ -22,6 +22,10 @@ the authoritative version is in [`pbiviz.json`](pbiviz.json).
 
 ### Changed
 
+- Renamed from **Multi-Step Waterfall** to **Simpler Waterfall** ahead of its
+  first AppSource submission, to read clearly as a fresh, distinct listing
+  rather than a fork of the original "Simple Waterfall" visual. The visual
+  GUID in `pbiviz.json` was regenerated accordingly.
 - TypeScript `strict` mode is now enabled. All resulting type errors in
   `src/visual.ts` were addressed (null-safety around `dataView.matrix`, d3
   `.node()` results, uninitialised class fields, and implicit `any`). No
@@ -37,6 +41,43 @@ the authoritative version is in [`pbiviz.json`](pbiviz.json).
   navigation and the scrollbar path.
 
 ### Fixed
+
+- **Crowded charts clipped the total bar and left a dead band.** Two problems
+  compounded on a small tile with many steps:
+  - The scrollbar only ever engaged when "Fit to width" was turned *off*; with
+    it on (the default), adding categories shrank the bars without limit.
+    "Fit to width" now means "fit until the bars stop being legible, then
+    scroll": the scrollbar engages once the band step drops below a floor, in
+    both orientations.
+  - The value-axis head-room above the tallest bar (and below the lowest, when
+    the waterfall goes negative) was one y-axis tick step — a large fraction of
+    a short plot, so the bars were crushed into a sliver and the cumulative
+    total pillar and its label were pushed off the top edge, with a dead band
+    below zero. Head-room is now sized in pixels (one label line) against the
+    final plot height, and the below-minimum padding dropped from two tick
+    steps to one. A hard minimum plot height also stops a pathological
+    category-label block from inverting the scale.
+  - Scrolled fully to the right, the last steps, the cumulative total pillar and
+    their value labels were cut off at the right edge with no way to scroll
+    further: the bars filled the scrollable width exactly, so the last bar ended
+    flush with the viewport edge and its centre-anchored label — wider than the
+    bar — spilled past it. The scroll now travels one label gutter beyond the
+    last bar.
+
+- **Category labels spilled across neighbouring cells on narrow charts.** With
+  "Wrap text" on, a word too wide for its cell is truncated character by
+  character, but only the rendered text was shortened — the string behind it
+  kept the full word, so the next word put the full-width word back on the line.
+  Multi-word categories ("Cameras & Camcorders Accessories", "Touch Screen
+  Phones") therefore rendered a middle line far wider than the cell, overlapping
+  the labels either side. The truncation is now written back to the line.
+
+- **"Orientation" missing from the format pane.** The formatting service derives
+  a group's identifier from its name alone, with no card prefix, so two cards
+  using the same group name collided and the pane dropped one of them. "Chart
+  Options → Layout" (holding the Vertical/Horizontal dropdown) collided with
+  "X-Axis → Layout"; "Legend → Font" with "Labels → Font", and "X-Axis →
+  Gridlines" with "Y-Axis → Gridlines". Group names are now card-scoped.
 
 - **Vertical layout geometry.** The plot rectangle is only known in stages
   (value-axis width, then the category-label block), but the scales were built

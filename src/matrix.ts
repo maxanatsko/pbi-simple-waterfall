@@ -14,7 +14,7 @@ import { ValueFormatter, resolveFormat } from "./valueFormatting";
 export function requireMatrixDataView(options: VisualUpdateOptions): DataView & { matrix: DataViewMatrix } {
     const dataView = options && options.dataViews && options.dataViews[0];
     if (!dataView || !dataView.matrix) {
-        throw new Error("Multi-Step Waterfall: a matrix dataView is required.");
+        throw new Error("Simpler Waterfall: a matrix dataView is required.");
     }
     return dataView as DataView & { matrix: DataViewMatrix };
 }

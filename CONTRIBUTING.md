@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for your interest in improving **Simple Waterfall**.
+Thanks for your interest in improving **Simpler Waterfall**.
 
 ## Reporting issues
 

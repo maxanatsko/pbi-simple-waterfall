@@ -248,12 +248,26 @@ export class ChartRenderer {
             yScaleTickValues.push(lastTickValueforPositive);
         }
         if (minValue < 0) {
-            // One step of head-room below the minimum, mirroring the `maxValue > 0`
-            // branch above. A second step here starved short plots of vertical
-            // space (the empty band under the lowest bar) without buying much.
-            const lastTickValueforNegative = yScaleTickValues[0] + (yScaleTickValues[0] - yScaleTickValues[1]);
-            minValue = lastTickValueforNegative;
-            yScaleTickValues.unshift(lastTickValueforNegative);
+            if (this.orientationName === "Horizontal") {
+                // Horizontal has no pixel-based headroom follow-up (that's
+                // Vertical-only, see `applyPixelHeadroom()`), and this is also the
+                // room a negative bar's "Outside end" label sits in -- it's placed
+                // to the left of the bar and pruned by `labelFit` once it crosses
+                // x=0. Keep the original two steps here.
+                const lastTickValueforNegative = yScaleTickValues[0] + (yScaleTickValues[0] - yScaleTickValues[1]);
+                const lastTickValueforNegative2 = yScaleTickValues[0] + (yScaleTickValues[0] - yScaleTickValues[1]) * 2;
+                minValue = lastTickValueforNegative2;
+                yScaleTickValues.unshift(lastTickValueforNegative, lastTickValueforNegative2);
+            } else {
+                // One step of head-room below the minimum, mirroring the
+                // `maxValue > 0` branch above. A second step here starved short
+                // plots of vertical space (the empty band under the lowest bar)
+                // without buying much -- and `applyPixelHeadroom()` tops this back
+                // up to a fixed pixel size afterwards if one step isn't enough.
+                const lastTickValueforNegative = yScaleTickValues[0] + (yScaleTickValues[0] - yScaleTickValues[1]);
+                minValue = lastTickValueforNegative;
+                yScaleTickValues.unshift(lastTickValueforNegative);
+            }
         }
 
         return { minValue, maxValue, yScaleTickValues };

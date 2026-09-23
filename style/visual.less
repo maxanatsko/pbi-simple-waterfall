@@ -14,9 +14,35 @@
         outline: none;
     }
 
+    // Empty-state message (see src/landingPage.ts). Neutral grey reads on
+    // light and dark report themes; forced-colors falls back to system text.
+    .landingPage {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        padding: 0 16px;
+        box-sizing: border-box;
+        text-align: center;
+        font-family: "Segoe UI", wf_segoe-ui_normal, helvetica, arial, sans-serif;
+        color: #605e5c;
+    }
+    .landingPageTitle {
+        font-size: 14px;
+        font-weight: 600;
+        margin-bottom: 4px;
+    }
+    .landingPageMessage {
+        font-size: 12px;
+    }
+
     @media (forced-colors: active) {
         rect:focus-visible {
             outline-color: Highlight;
+        }
+        .landingPage {
+            color: CanvasText;
         }
     }
 }

@@ -126,7 +126,6 @@ export class BarInteractions {
         if (!bars) {
             return;
         }
-        const self = this;
         // Roving tab index: the whole bar series is one Tab stop. Only the
         // "current" bar is tabbable; Arrow / Home / End move focus and the 0
         // index with it.
@@ -140,9 +139,9 @@ export class BarInteractions {
                     : d.value;
                 return `${name}: ${value}`;
             })
-            .on('keydown', function (event: KeyboardEvent, d: any) {
+            .on('keydown', (event: KeyboardEvent, d: any) => {
                 const nodes = bars.nodes();
-                const i = nodes.indexOf(this);
+                const i = nodes.indexOf(event.currentTarget as Element);
                 const focusAt = (target: number) => {
                     const clamped = Math.max(0, Math.min(target, nodes.length - 1));
                     const el = nodes[clamped] as SVGElement;
@@ -157,12 +156,12 @@ export class BarInteractions {
                     case ' ':
                     case 'Spacebar':
                         event.preventDefault();
-                        if (!self.allowInteractions) {
+                        if (!this.allowInteractions) {
                             return;
                         }
-                        self.deps.selectionManager
+                        this.deps.selectionManager
                             .select(d.selectionId, event.ctrlKey || event.metaKey || event.shiftKey)
-                            .then((ids: ISelectionIdBase[]) => self.syncSelectionState(bars, ids));
+                            .then((ids: ISelectionIdBase[]) => this.syncSelectionState(bars, ids));
                         break;
                     case 'ArrowRight':
                     case 'ArrowDown':
@@ -183,8 +182,8 @@ export class BarInteractions {
                         focusAt(nodes.length - 1);
                         break;
                     case 'Escape':
-                        if (self.allowInteractions) {
-                            self.deps.selectionManager.clear().then(() => self.syncSelectionState(bars, []));
+                        if (this.allowInteractions) {
+                            this.deps.selectionManager.clear().then(() => this.syncSelectionState(bars, []));
                         }
                         break;
                     default:

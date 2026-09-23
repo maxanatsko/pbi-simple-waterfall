@@ -24,8 +24,17 @@ npx pbiviz install-cert
 # Start the dev server (run twice the first time if the cert step just ran)
 npm start
 
-# Lint
+# Lint (`npm run eslint` is the whole-repo form Microsoft runs for certification)
 npm run lint
+npm run eslint
+
+# Type-check and unit tests
+npm run typecheck
+npm test
+
+# Dependency audit -- certification requires no high or moderate findings,
+# dev dependencies included
+npm audit
 
 # Produce a distributable package in dist/
 npm run package
@@ -67,7 +76,14 @@ append this to the report URL before importing:
 - The build runs with `--all-locales` because the current
   `powerbi-visuals-webpack-plugin` localisation loader cannot parse the ESM
   `powerbiGlobalizeLocales.js` shipped by `powerbi-visuals-utils-formattingutils`
-  7. This bundles all locale strings rather than only `en-US`.
+  7. This bundles all locale strings rather than only `en-US`. A bare
+  `pbiviz package` therefore fails with `SyntaxError: Unexpected token
+  'export'`; always build (and tell certification reviewers to build) with
+  `npm run package`.
+- `pbiviz package --all-locales --certification-audit` runs the certification
+  checks. It can print spurious feature errors (e.g. "Rendering Events",
+  "Format Pane") when webpack takes its second pass; run it on its own and
+  trust the single-pass result.
 - TypeScript `strict` mode is **on**. `npm run typecheck` (`tsc --noEmit` for
   both `tsconfig.json` and `tsconfig.test.json`) runs in CI before
   `npm run package`. The legacy renderer in `src/visual.ts` still uses `any`

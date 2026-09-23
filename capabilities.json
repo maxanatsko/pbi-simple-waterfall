@@ -37,6 +37,8 @@
         "default": {}
     },
     "supportsMultiVisualSelection": true,
+    "supportsLandingPage": true,
+    "supportsEmptyDataView": true,
     "supportsKeyboardFocus": true,
     "tooltips": {
         "supportedTypes": {

@@ -49,8 +49,10 @@ Requires Node.js 20.19+.
 npm install
 npx pbiviz install-cert            # one-time dev certificate (for npm start)
 npm start                          # dev server
-npm run lint                       # ESLint
-npm test                           # vitest smoke suite
+npm run lint                       # ESLint (src + test)
+npm run eslint                     # ESLint (whole repo, certification form)
+npm run typecheck                  # tsc --noEmit
+npm test                           # vitest suite
 npm run package                    # build dist/*.pbiviz
 ```
 
@@ -62,7 +64,7 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full setup and testing notes.
 - [Contributing](CONTRIBUTING.md)
 - [Privacy policy](PRIVACY.md)
 - [License](LICENSE) (MIT)
-- [Support](https://maxanatsko.com)
+- [Support](https://github.com/maxanatsko/pbi-simple-waterfall/issues)
 
 ## Credits
 

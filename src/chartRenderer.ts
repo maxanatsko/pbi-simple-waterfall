@@ -993,7 +993,7 @@ export class ChartRenderer {
                     tspan = t.text(null).append("tspan").attr("x", 0).attr("y", y).attr("dy", dy + "em");
 
                 var counter = 0;
-                while (word = words.pop()) {
+                while ((word = words.pop())) {
                     line.push(word);
                     tspan.text(line.join(" "));
                     counter++;
@@ -1020,7 +1020,7 @@ export class ChartRenderer {
                 tspan = t.text(null).append("tspan").attr("x", 0).attr("y", y).attr("dy", dy + "em");
             var width = standardwidth * (t.datum() as any)["childrenCount"];
 
-            while (word = words.pop()) {
+            while ((word = words.pop())) {
                 line.push(word);
                 tspan.text(line.join(joinSep));
                 if (tspan.node()!.getComputedTextLength() > width) {

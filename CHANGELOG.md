@@ -19,6 +19,10 @@ the authoritative version is in [`pbiviz.json`](pbiviz.json).
   the shape of the waterfall.
 - The hover tooltip now includes a **Running total** row for each step, showing
   the cumulative value up to and including that bar.
+- **Landing page.** With no measure in Values, the visual shows a short
+  "Add a measure to Values" prompt instead of a blank canvas. The strings are
+  served through the localization manager (`stringResources/en-US`), which also
+  supplies the field-well names.
 
 ### Changed
 
@@ -32,6 +36,12 @@ the authoritative version is in [`pbiviz.json`](pbiviz.json).
   intended change to rendering behaviour.
 - Added an `npm run typecheck` script and a matching CI step; test sources are
   now type-checked via `tsconfig.test.json`.
+- AppSource certification readiness: API bumped to 5.11.1; an `npm run eslint`
+  script (Microsoft's required lint command) added; CI now runs the full
+  `npm audit --audit-level=moderate`, dev dependencies included, and the
+  moderate dev-tooling advisories were cleared (`vitest` 4.1.11, `qs` patch, a
+  `uuid` override for the `webpack-dev-server` → `sockjs` chain).
+- Support URL now points to the GitHub issue tracker.
 - Split the `Visual` god class (was ~2150 lines) into focused modules —
   `dataPoint`, `tooltip`, `valueFormatting`, `matrix`, `waterfallData`
   (the four data converters), `interactions` (selection + keyboard),
@@ -41,6 +51,17 @@ the authoritative version is in [`pbiviz.json`](pbiviz.json).
   navigation and the scrollbar path.
 
 ### Fixed
+
+- **Selection worked where the host forbids it.** Interactions were hardcoded
+  on; the visual now honours `hostCapabilities.allowInteractions`, so clicks
+  and Enter/Space don't select on hosts without interactivity (e.g. dashboard
+  tiles).
+- **Stale chart after emptying the visual or a failed render.** The previous
+  bars and legend stayed on screen when the data was removed or an update
+  failed; they are now cleared first.
+- **Format pane error on an empty visual.** Opening the format pane before any
+  data was added read an undefined chart mode and threw; it now shows the
+  default cards.
 
 - **Crowded charts clipped the total bar and left a dead band.** Two problems
   compounded on a small tile with many steps:

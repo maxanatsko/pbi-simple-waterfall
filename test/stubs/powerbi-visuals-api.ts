@@ -8,7 +8,7 @@
  * supplies the runtime enum values that src/settings.ts and src/visual.ts read.
  */
 
-export const version = "5.11.0";
+export const version = "5.11.1";
 
 export const VisualEnumerationInstanceKinds = {
   Constant: 1,

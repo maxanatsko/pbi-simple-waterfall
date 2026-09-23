@@ -6,10 +6,10 @@
         "visualClassName": "Visual",
         "version": "3.0.0.0",
         "description": "Build multi-step waterfall charts: define pillars from categories or measures, choose a vertical or horizontal layout, and format every element.",
-        "supportUrl": "https://maxanatsko.com",
+        "supportUrl": "https://github.com/maxanatsko/pbi-simple-waterfall/issues",
         "gitHubUrl": "https://github.com/maxanatsko/pbi-simple-waterfall"
     },
-    "apiVersion": "5.11.0",
+    "apiVersion": "5.11.1",
     "author": {
         "name": "Maxim Anatsko",
         "email": "max@maxanatsko.com"

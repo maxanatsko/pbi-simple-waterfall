@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import powerbi from "powerbi-visuals-api";
 import { Visual } from "../src/visual";
 import {
@@ -10,6 +10,9 @@ import { DataTable } from "powerbi-visuals-utils-testutils/lib/dataViewBuilder/m
 class VisualBuilder extends VisualBuilderBase<Visual> {
     constructor(width = 800, height = 600) {
         super(width, height);
+        // The testutils host mock defaults to `allowInteractions: false` (a
+        // dashboard tile); these tests model a report, where it is true.
+        (this.visualHost as any).hostCapabilities = { allowInteractions: true };
     }
     protected build(options: powerbi.extensibility.visual.VisualConstructorOptions): Visual {
         return new Visual(options);
@@ -115,5 +118,38 @@ describe("bar accessibility + selection", () => {
         const opacities = rects.map(r => r.getAttribute("fill-opacity"));
         expect(opacities[1]).toBe("1");
         expect(opacities.filter(o => o === "0.5").length).toBe(rects.length - 1);
+    });
+});
+
+describe("host allowInteractions", () => {
+    function renderWithoutInteractions() {
+        const builder = new VisualBuilder();
+        (builder.visualHost as any).hostCapabilities = { allowInteractions: false };
+        const selectionManager = builder.visualHost.createSelectionManager();
+        const select = vi.spyOn(selectionManager, "select");
+        builder.init();
+        builder.update(buildDataView());
+        return { builder, select };
+    }
+
+    it("does not select on click when the host disallows interactions", () => {
+        const { builder, select } = renderWithoutInteractions();
+        bars(builder.element)[1].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        expect(select).not.toHaveBeenCalled();
+    });
+
+    it("does not select on Enter when the host disallows interactions", () => {
+        const { builder, select } = renderWithoutInteractions();
+        bars(builder.element)[0].dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+        expect(select).not.toHaveBeenCalled();
+    });
+
+    it("selects on click when the host allows interactions", () => {
+        const builder = new VisualBuilder();
+        const select = vi.spyOn(builder.visualHost.createSelectionManager(), "select");
+        builder.init();
+        builder.update(buildDataView());
+        bars(builder.element)[1].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        expect(select).toHaveBeenCalledTimes(1);
     });
 });

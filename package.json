@@ -23,13 +23,14 @@
         "start": "pbiviz start --all-locales",
         "package": "node scripts/package.mjs",
         "lint": "eslint src test",
+        "eslint": "npx eslint .",
         "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.test.json",
         "test": "vitest run",
         "npmVersion": "npm list --depth=0"
     },
     "dependencies": {
         "d3": "^7.9.0",
-        "powerbi-visuals-api": "5.11.0",
+        "powerbi-visuals-api": "5.11.1",
         "powerbi-visuals-utils-dataviewutils": "^7.0.0",
         "powerbi-visuals-utils-formattingmodel": "^7.1.0",
         "powerbi-visuals-utils-formattingutils": "^7.0.0",
@@ -37,7 +38,8 @@
         "powerbi-visuals-utils-typeutils": "^7.0.0"
     },
     "overrides": {
-        "webpack": "5.105.4"
+        "webpack": "5.105.4",
+        "uuid": "^11.1.1"
     },
     "devDependencies": {
         "@types/d3": "^7.4.3",
@@ -49,6 +51,6 @@
         "powerbi-visuals-utils-testutils": "^7.0.1",
         "typescript": "~5.9.3",
         "typescript-eslint": "^8.57.2",
-        "vitest": "^3.2.7"
+        "vitest": "^4.1.11"
     }
 }

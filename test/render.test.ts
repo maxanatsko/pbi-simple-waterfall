@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import powerbi from "powerbi-visuals-api";
 import { Visual } from "../src/visual";
 import {
@@ -160,5 +160,51 @@ describe("negative-minimum head-room differs by orientation", () => {
         expect(horizontalTicks).toBe(verticalTicks + 2);
         v.destroy();
         h.destroy();
+    });
+});
+
+describe("landing page", () => {
+    function emptyDataView(): powerbi.DataView {
+        return { metadata: { columns: [] } } as powerbi.DataView;
+    }
+
+    function landing(root: Element): Element | null {
+        return root.querySelector(".landingPage");
+    }
+
+    it("shows the landing page and no chart when there is no data", () => {
+        const builder = new VisualBuilder(800, 600);
+        builder.init();
+        const finished = vi.spyOn(builder.visualHost.eventService, "renderingFinished");
+        const failed = vi.spyOn(builder.visualHost.eventService, "renderingFailed");
+        builder.update(emptyDataView());
+        expect(landing(builder.element)?.textContent).toContain("Add a measure to Values");
+        expect(builder.element.querySelectorAll("svg").length).toBe(0);
+        expect(finished).toHaveBeenCalled();
+        expect(failed).not.toHaveBeenCalled();
+        builder.destroy();
+    });
+
+    it("hides the landing page once there is data, and brings it back without leftover bars", () => {
+        const builder = new VisualBuilder(800, 600);
+        builder.init();
+        builder.update(emptyDataView());
+        builder.update(buildDataView("Vertical"));
+        expect(landing(builder.element)).toBeNull();
+        expect(counts(builder.element).bars).toBeGreaterThan(0);
+
+        builder.update(emptyDataView());
+        expect(landing(builder.element)).not.toBeNull();
+        expect(builder.element.querySelectorAll("svg").length).toBe(0);
+        builder.destroy();
+    });
+
+    it("builds a format pane model while the landing page is shown", () => {
+        const builder = new VisualBuilder(800, 600);
+        builder.init();
+        builder.update(emptyDataView());
+        const model = (builder as any).visual.getFormattingModel();
+        expect(model.cards.length).toBeGreaterThan(0);
+        builder.destroy();
     });
 });

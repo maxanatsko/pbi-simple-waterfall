@@ -45,6 +45,7 @@ import { WaterfallDataBuilder } from "./waterfallData";
 import { BarInteractions } from "./interactions";
 import { ChartRenderer } from "./chartRenderer";
 import { renderLegend } from "./legend";
+import { renderLandingPage, landingText, LandingText } from "./landingPage";
 import { resolveVisualMode, VisualMode } from "./visualType";
 import { SCROLLBAR_BREATH } from "./constants";
 
@@ -74,6 +75,11 @@ export class Visual implements IVisual {
     private isHighContrast: boolean;
     private formatter!: ValueFormatter;
     private interactions: BarInteractions;
+    /** False until an update fully renders (and again after a landing-page or
+     *  failed update), so the format pane never reads a missing or stale
+     *  visualType / barChartData. */
+    private hasChart = false;
+    private landingText: LandingText;
 
 
 
@@ -96,6 +102,7 @@ export class Visual implements IVisual {
         this.selectionManager = options.host.createSelectionManager();
         this.events = options.host.eventService;
         this.locale = options.host.locale;
+        this.landingText = landingText(options.host.createLocalizationManager());
         this.formattingSettingsService = new FormattingSettingsService();
         this.colorPalette = options.host.colorPalette;
         this.isHighContrast = this.colorPalette.isHighContrast;
@@ -113,11 +120,13 @@ export class Visual implements IVisual {
         const dataView: DataView = this.visualUpdateOptions && this.visualUpdateOptions.dataViews && this.visualUpdateOptions.dataViews[0];
         const model: VisualFormattingSettingsModel =
             this.formattingSettingsService.populateFormattingSettingsModel(VisualFormattingSettingsModel, dataView);
-        model.applyState(
-            this.visualType,
-            this.visualSettings,
-            this.barChartData,
-            dataView);
+        if (this.hasChart) {
+            model.applyState(
+                this.visualType,
+                this.visualSettings,
+                this.barChartData,
+                dataView);
+        }
         return this.formattingSettingsService.buildFormattingModel(model);
     }
     public update(options: VisualUpdateOptions) {
@@ -128,30 +137,41 @@ export class Visual implements IVisual {
         try {
         this.visualUpdateOptions = options;
         this.isHighContrast = this.colorPalette.isHighContrast;
-        const dataView = requireMatrixDataView(options);
-        this.visualSettings = Visual.parseSettings(options && options.dataViews && options.dataViews[0]);
-        this.formatter = new ValueFormatter({
-            locale: this.locale,
-            labelValueFormat: this.visualSettings.LabelsFormatting.valueFormat,
-            labelDecimals: this.visualSettings.LabelsFormatting.decimalPlaces,
-        });
-        this.chartContainer.selectAll('svg').remove();
-        const renderSettings = new RenderSettings(this.visualSettings);
-        if (dataView.matrix.rows.levels.length != 1){
-            this.visualSettings.chartOrientation.limitBreakdown=false;
-        }
+        // Wipe the previous render up front so an empty or failed update never
+        // leaves a stale chart behind.
+        this.clearChart();
 
         // Sources fed by the "Tooltips" field well trail the "Values" sources in
         // `valueSources` (mapping order) and only add rows to the hover tooltip.
         // Everything not explicitly tagged `tooltips` counts as a measure -- so a
         // legacy source with no role metadata still counts, but a measure bound
         // solely to Tooltips (Values empty) does not become a bogus bar.
-        const valueSources = dataView.matrix.valueSources;
+        const firstDataView = options && options.dataViews && options.dataViews[0];
+        const valueSources = (firstDataView && firstDataView.matrix && firstDataView.matrix.valueSources) || [];
         const measureCount = valueSources.filter(s => !(s.roles && s.roles["tooltips"])).length;
-        if (measureCount === 0) {
-            // Nothing to plot -- fail cleanly rather than let the converters and
-            // the value scale derive NaN from an empty bar list.
-            throw new Error("Simpler Waterfall: add a measure to the Values field.");
+        if (!firstDataView || !firstDataView.matrix || measureCount === 0) {
+            // Nothing to plot yet: show the landing page instead of an empty
+            // chart (or NaN-scaled bars from an empty bar list).
+            if (firstDataView) {
+                this.visualSettings = Visual.parseSettings(firstDataView);
+            }
+            this.hasChart = false;
+            renderLandingPage(this.mainContainer, true, this.landingText);
+            this.events.renderingFinished(options);
+            return;
+        }
+        renderLandingPage(this.mainContainer, false, this.landingText);
+
+        const dataView = requireMatrixDataView(options);
+        this.visualSettings = Visual.parseSettings(dataView);
+        this.formatter = new ValueFormatter({
+            locale: this.locale,
+            labelValueFormat: this.visualSettings.LabelsFormatting.valueFormat,
+            labelDecimals: this.visualSettings.LabelsFormatting.decimalPlaces,
+        });
+        const renderSettings = new RenderSettings(this.visualSettings);
+        if (dataView.matrix.rows.levels.length != 1){
+            this.visualSettings.chartOrientation.limitBreakdown=false;
         }
 
         const builder = new WaterfallDataBuilder({
@@ -174,7 +194,10 @@ export class Visual implements IVisual {
         // pillar exists, "Other" only when the bucket bar exists, etc.).
         this.legendHeight = renderLegend(this.legendContainer, renderSettings, this.barChartData);
 
-        this.interactions.configure({ allowInteractions: true, isHighContrast: this.isHighContrast });
+        // Hosts without interactivity (e.g. dashboard tiles) report
+        // `allowInteractions: false`; honour it so clicks and keys don't select.
+        const allowInteractions = !(this.host.hostCapabilities && this.host.hostCapabilities.allowInteractions === false);
+        this.interactions.configure({ allowInteractions, isHighContrast: this.isHighContrast });
         new ChartRenderer({
             chartContainer: this.chartContainer,
             orientationName: this.visualSettings.chartOrientation.orientation == "Horizontal" ? "Horizontal" : "Vertical",
@@ -198,10 +221,20 @@ export class Visual implements IVisual {
 
         //Certification requirement to use rendering API//
         //-------------------------------------------------------------------------
+        this.hasChart = true;
         this.events.renderingFinished(options);
         //-------------------------------------------------------------------------
         } catch (e: unknown) {
+            this.clearChart();
+            this.hasChart = false;
             this.events.renderingFailed(options, toErrorMessage(e));
         }
+    }
+
+    /** Remove the chart SVGs and the legend drawn by the previous update. */
+    private clearChart(): void {
+        this.chartContainer.selectAll('svg').remove();
+        this.legendContainer.selectAll('svg').remove();
+        this.legendContainer.style('height', 0 + "pt");
     }
 }

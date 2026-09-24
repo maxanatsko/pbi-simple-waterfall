@@ -49,6 +49,26 @@ append this to the report URL before importing:
 ?approvedResourcesDisabled=true
 ```
 
+## Releasing
+
+Releases are published by `.github/workflows/release.yml` when a version tag
+is pushed. It runs the full build (lint, type-check, audit, tests, package)
+and attaches the `.pbiviz` to a GitHub Release.
+
+1. Bump the version in `pbiviz.json` (four-part, e.g. `3.1.0.0`) and
+   `package.json` (three-part, e.g. `3.1.0`).
+2. Move the `[Unreleased]` entries in `CHANGELOG.md` under the new version.
+3. Merge to `main`, then tag the merge commit with `v` plus the `pbiviz.json`
+   version:
+
+```bash
+git tag v3.1.0.0
+git push origin v3.1.0.0
+```
+
+The workflow fails if the tag doesn't match `pbiviz.json`. A suffix after `-`
+(e.g. `v3.1.0.0-beta`) publishes a pre-release.
+
 ## Coding notes
 
 - Source lives in `src/` (`visual.ts` is the entry point declared in

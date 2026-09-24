@@ -1,0 +1,45 @@
+name: release
+
+# Push a tag named after the pbiviz.json version (e.g. v3.0.0.0) to publish a
+# GitHub Release with the .pbiviz attached. A suffix after "-" (v3.1.0.0-beta)
+# marks it as a pre-release.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    uses: ./.github/workflows/build.yml
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check tag matches pbiviz.json version
+        run: |
+          version=$(jq -r .visual.version pbiviz.json)
+          tag="${GITHUB_REF_NAME#v}"
+          tag="${tag%%-*}"
+          if [ "$tag" != "$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match pbiviz.json version $version"
+            exit 1
+          fi
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: pbiviz-package
+          path: dist
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRERELEASE: ${{ contains(github.ref_name, '-') && 'true' || '' }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/*.pbiviz \
+            --title "Simpler Waterfall $GITHUB_REF_NAME" \
+            --generate-notes --verify-tag ${PRERELEASE:+--prerelease}

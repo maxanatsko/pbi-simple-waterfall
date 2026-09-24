@@ -9,6 +9,12 @@ the authoritative version is in [`pbiviz.json`](pbiviz.json).
 
 ## [Unreleased]
 
+## [3.0.0.0] - 2026-09-24
+
+First release as **Simpler Waterfall**: a fork of the original Simple Waterfall
+visual by Nishant Jain, now maintained by Maxim Anatsko and published as its own
+AppSource entry.
+
 ### Added
 
 - **X-Axis Show/Hide** toggle, mirroring the Y-Axis one. Off removes the
@@ -23,13 +29,18 @@ the authoritative version is in [`pbiviz.json`](pbiviz.json).
   "Add a measure to Values" prompt instead of a blank canvas. The strings are
   served through the localization manager (`stringResources/en-US`), which also
   supplies the field-well names.
+- **Keyboard navigation.** Tab to the chart, move between bars with the arrow
+  keys (and Home / End), press Enter or Space to select, Ctrl / Shift to add to
+  the selection, and Esc to clear. The focused bar shows a visible outline.
+- **High-contrast mode support.** Bars, labels and selection follow the Windows
+  high-contrast theme colours.
 
 ### Changed
 
-- Renamed from **Multi-Step Waterfall** to **Simpler Waterfall** ahead of its
-  first AppSource submission, to read clearly as a fresh, distinct listing
-  rather than a fork of the original "Simple Waterfall" visual. The visual
-  GUID in `pbiviz.json` was regenerated accordingly.
+- Renamed from **Simple Waterfall** to **Simpler Waterfall** (briefly
+  "Multi-Step Waterfall" during development), to read clearly as a fresh,
+  distinct listing rather than a fork of the original visual. The visual GUID
+  in `pbiviz.json` was regenerated accordingly.
 - TypeScript `strict` mode is now enabled. All resulting type errors in
   `src/visual.ts` were addressed (null-safety around `dataView.matrix`, d3
   `.node()` results, uninitialised class fields, and implicit `any`). No
@@ -49,6 +60,14 @@ the authoritative version is in [`pbiviz.json`](pbiviz.json).
   orchestrator. No intended change to rendering, data or interaction behaviour;
   added unit tests for the converters, formatters, tooltips, keyboard
   navigation and the scrollbar path.
+- Rebuilt the format pane on Power BI's current formatting API and refreshed the
+  underlying build to the latest Power BI visuals API (5.11). Every existing
+  option is unchanged — sentiment and per-bar colours, per-bar pillar toggles
+  and conditional formatting all behave as before.
+
+### Removed
+
+- The **"Negative value in brackets"** label option, which had no effect.
 
 ### Fixed
 
@@ -135,30 +154,6 @@ the authoritative version is in [`pbiviz.json`](pbiviz.json).
   width is also floored so the default is visible.
 - **Font default** no longer renders as `'"Segoe UI", wf_…` in the format pane's
   font picker.
-
-## [3.0.0.0]
-
-Renamed from **Simple Waterfall** to **Multi-Step Waterfall**. This is a fork of
-the original visual by Nishant Jain, now maintained by Maxim Anatsko and
-published as its own AppSource entry.
-
-### Added
-- **Keyboard navigation.** Tab to the chart, move between bars with the arrow
-  keys (and Home / End), press Enter or Space to select, Ctrl / Shift to add to
-  the selection, and Esc to clear. The focused bar shows a visible outline.
-- **High-contrast mode support.** Bars, labels and selection follow the Windows
-  high-contrast theme colours.
-
-### Changed
-- Rebuilt the format pane on Power BI's current formatting API and refreshed the
-  underlying build to the latest Power BI visuals API (5.11). Every existing
-  option is unchanged — sentiment and per-bar colours, per-bar pillar toggles
-  and conditional formatting all behave as before.
-
-### Removed
-- The **"Negative value in brackets"** label option, which had no effect.
-
-### Fixed
 - The labels on/off switch is now labelled **"Show Labels"** (previously an
   unnamed placeholder).
 

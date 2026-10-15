@@ -5,6 +5,8 @@ from categories or measures, choose a vertical or horizontal layout, and format
 every element of the chart — individual bar colours, labels, axes, gridlines,
 margins and more.
 
+![Example multi-step revenue bridge built with Simpler Waterfall](assets/example-waterfall.png)
+
 Formerly "Simple Waterfall", then "Multi-Step Waterfall" during the 3.0.0.0
 modernisation (new toolchain, `getFormattingModel` format pane, keyboard and
 high-contrast support); renamed to "Simpler Waterfall" ahead of its first

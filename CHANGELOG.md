@@ -9,6 +9,14 @@ the authoritative version is in [`pbiviz.json`](pbiviz.json).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Horizontal category labels clipped on the left.** The label column was
+  sized from page coordinates, so when the visual did not sit at the left edge
+  of its page (an embed, a padded canvas) the labels were shifted by that offset
+  and cut off. Label, value-label and gridline measurements are now taken
+  relative to the visual itself.
+
 ## [3.0.0.0] - 2026-09-24
 
 First release as **Simpler Waterfall**: a fork of the original Simple Waterfall

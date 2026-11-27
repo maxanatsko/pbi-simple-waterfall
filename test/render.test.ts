@@ -208,3 +208,45 @@ describe("landing page", () => {
         builder.destroy();
     });
 });
+
+/** `getBoundingClientRect` reports page coordinates. The Horizontal category
+ *  axis used to feed the labels' raw client `left` back into its SVG transform,
+ *  so a visual whose root does not sit at the page's x = 0 (a padded report
+ *  canvas, an embed, the harness) shifted the label block by that offset and
+ *  the SVG's `overflow: hidden` clipped the labels' left edge. */
+describe("Horizontal category labels do not depend on the visual's page offset", () => {
+    const CHAR_PX = 7;
+
+    /** Lay every element out at `pageLeft`; text/tspan extend leftwards from
+     *  there by CHAR_PX per character, like end-anchored axis labels. */
+    function stubRects(pageLeft: number) {
+        return vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
+            const isText = this.tagName === "text" || this.tagName === "tspan";
+            const width = isText ? (this.textContent ?? "").length * CHAR_PX : 0;
+            const height = isText ? 12 : 0;
+            return {
+                x: pageLeft - width, left: pageLeft - width, right: pageLeft,
+                y: 0, top: 0, bottom: height, width, height,
+                toJSON: () => ({}),
+            } as DOMRect;
+        });
+    }
+
+    function categoryAxisTransform(pageLeft: number): string | null {
+        const spy = stubRects(pageLeft);
+        try {
+            const builder = render("Horizontal");
+            const t = builder.element.querySelector(".xAxisParentGroup")?.getAttribute("transform") ?? null;
+            builder.destroy();
+            return t;
+        } finally {
+            spy.mockRestore();
+        }
+    }
+
+    it("shifts the label block by the widest label, whatever the page offset", () => {
+        const widest = "Increase2".length * CHAR_PX;
+        expect(categoryAxisTransform(0)).toBe(`translate(${widest},0)`);
+        expect(categoryAxisTransform(32)).toBe(`translate(${widest},0)`);
+    });
+});

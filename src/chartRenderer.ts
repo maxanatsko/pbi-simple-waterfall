@@ -493,7 +493,7 @@ export class ChartRenderer {
             })
 
         }
-        o.labelFit(g.selectAll(".labels"), o.name === "Vertical" ? 0 : this.width + findRightHorizontal - this.ctx.scrollbarBreath);
+        o.labelFit(g.selectAll(".labels"), o.name === "Vertical" ? 0 : this.width + findRightHorizontal - this.ctx.scrollbarBreath, this.visualOrigin().left);
         this.ctx.tooltipServiceWrapper.addTooltip(g.selectAll('.labels'),
             (dataPoint: any) => buildValueTooltip(dataPoint),
             // no identity-based tooltips here; the util's identity getter is optional
@@ -869,21 +869,34 @@ export class ChartRenderer {
         return { innerHeight: resultInnerHeight, findRightHorizontal, xAxisPosition };
     }
 
+    /** Client-space position of the visual's root box. `getBoundingClientRect`
+     *  reports page coordinates, so every measured edge that is fed back into an
+     *  SVG transform has to be taken relative to this. In the Power BI iframe
+     *  the root sits at (0, 0), but a host page that offsets the visual (a
+     *  report canvas, a harness, an embed) would otherwise shift the
+     *  category-label block by that offset and clip the labels. */
+    private visualOrigin(): { left: number; top: number } {
+        const root = (this.ctx.chartContainer.node() as HTMLElement).parentElement;
+        const r = root ? root.getBoundingClientRect() : null;
+        return { left: r?.left ?? 0, top: r?.top ?? 0 };
+    }
+
     /** Reduce a set of axis label nodes to the outer category-axis edge.
      *  Vertical (scrollOrient "x"): max bounding-box bottom, optionally subtracting
      *  the legend height. Horizontal: min bounding-box left. `running` seeds the
      *  accumulator so callers can fold across multiple axis groups. */
     private accumulateAxisEdge(selection: any, running: number, subtractLegend: boolean): number {
         const o = this.orientation;
+        const origin = this.visualOrigin();
         let edge = running;
         selection.each((d: any, i: number, nodes: any) => {
             if (o.scrollOrient == "x") {
-                const bottom = nodes[i].getBoundingClientRect().bottom - (subtractLegend ? this.ctx.legendHeight : 0);
+                const bottom = nodes[i].getBoundingClientRect().bottom - origin.top - (subtractLegend ? this.ctx.legendHeight : 0);
                 if (edge <= bottom) {
                     edge = bottom;
                 }
             } else {
-                const left = nodes[i].getBoundingClientRect().left;
+                const left = nodes[i].getBoundingClientRect().left - origin.left;
                 if (edge >= left) {
                     edge = left;
                 }
@@ -951,7 +964,7 @@ export class ChartRenderer {
         if (this.ctx.renderSettings.xAxisShowGridLine) {
             const axisLinePt = Math.min(this.ctx.renderSettings.xGridlineStrokeWidth / o.xGridlineStrokeDivisor, MAX_AXIS_STROKE_PT);
             this.applyGridlineStyle(myxAxisParent.selectAll('path'), this.ctx.renderSettings.xAxisGridLineColor, axisLinePt + "pt");
-            var myAxisTop = myxAxisParent.select("path").node()!.getBoundingClientRect().top;
+            var myAxisTop = myxAxisParent.select("path").node()!.getBoundingClientRect().top - this.visualOrigin().top;
             const catPos = (d: any, i: number) => allDataIndex == (levels - 1)
                 ? xScale(d.category) - (xScale.padding() * xScale.step()) / 2
                 : xAxisrange[i];

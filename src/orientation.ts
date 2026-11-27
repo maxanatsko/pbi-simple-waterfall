@@ -195,8 +195,10 @@ export class Orientation {
     /** Which wrap helper to use for category labels. */
     public get labelWrap(): "labelWrapText" | "wrapHorizontal" { return this.name === "Vertical" ? "labelWrapText" : "wrapHorizontal"; }
 
-    /** Remove overlapping / out-of-bounds labels so they don't collide. */
-    public labelFit(text: any, edge: number): void {
+    /** Remove overlapping / out-of-bounds labels so they don't collide.
+     *  `originLeft` is the visual root's client-space left, so the horizontal
+     *  bounds check compares visual-local positions against `edge`. */
+    public labelFit(text: any, edge: number, originLeft: number): void {
         if (this.name === "Vertical") {
             text.each((d: any, i: number, nodes: any) => {
                 if (i != 0) {
@@ -210,7 +212,8 @@ export class Orientation {
             });
         } else {
             text.each((d: any, i: number, nodes: any) => {
-                if (nodes[i].getBoundingClientRect().right > edge || nodes[i].getBoundingClientRect().left < 0) {
+                const box = nodes[i].getBoundingClientRect();
+                if (box.right - originLeft > edge || box.left - originLeft < 0) {
                     nodes[i].remove();
                 }
             });
